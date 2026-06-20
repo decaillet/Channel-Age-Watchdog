@@ -4,6 +4,8 @@ A Firefox MV3 WebExtension that flags likely AI-slop YouTube channels using a pu
 heuristic (`video_count / channel_age_in_days > threshold`). Full intent lives in `overview.md`;
 the build is tracked agile-style in `todo.md`.
 
+See @todo.md for the current milestone board.
+
 ## How we work
 - Build in small, **demonstrable** milestones (see `todo.md`). A milestone is done only when its
   Demo passes in a real Firefox browser.
@@ -28,5 +30,4 @@ the build is tracked agile-style in `todo.md`.
 4. After editing files, click "Reload" on the add-on in `about:debugging`.
 
 ## Conventions
-- All code/comments in English. No emojis in code/comments/logs/commit messages.
 - Conventional Commits. Commit/push only when the user asks.
