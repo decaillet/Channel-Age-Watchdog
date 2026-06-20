@@ -15,9 +15,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** repo has a clear structure; `git status` shows the scaffolding.
 
 ## M1 — "Does-nothing" extension that loads
-- [ ] `manifest.json` (Firefox MV3)
-- [ ] placeholder icon(s)
-- [ ] `content.js` logging `Watchdog loaded` on YouTube
+- [x] `manifest.json` (Firefox MV3)
+- [x] placeholder icon(s)
+- [x] `content.js` logging `Watchdog loaded` on YouTube
 - **Demo:** `about:debugging` → Load Temporary Add-on → open YouTube → see the log in console.
 
 ## M2 — Visible (dummy) badge on watch pages

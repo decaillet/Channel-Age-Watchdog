@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Channel Age Watchdog",
+  "version": "0.1.0",
+  "description": "Flags YouTube channels with a suspicious publishing rate (videos relative to channel age). Not AI detection.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "channel-age-watchdog@icare.ch",
+      "strict_min_version": "115.0"
+    }
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
