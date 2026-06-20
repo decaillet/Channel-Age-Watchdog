@@ -21,8 +21,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** `about:debugging` → Load Temporary Add-on → open YouTube → see the log in console.
 
 ## M2 — Visible (dummy) badge on watch pages
-- [ ] Inject a small badge near the channel name on `/watch` pages (hardcoded "⚠️ test")
-- [ ] Survive YouTube SPA navigation (re-inject on `yt-navigate-finish`)
+- [x] Inject a small badge near the channel name on `/watch` pages (hardcoded "⚠️ test")
+- [x] Survive YouTube SPA navigation (re-inject on `yt-navigate-finish`)
 - **Demo:** badge appears on a watch page and re-appears when you click to another video.
 
 ## M3 — Detect the real channel from the page
