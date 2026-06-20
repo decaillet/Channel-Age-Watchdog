@@ -29,5 +29,9 @@ See @todo.md for the current milestone board.
 3. Open `youtube.com`; inspect via the page console or the add-on's "Inspect" button.
 4. After editing files, click "Reload" on the add-on in `about:debugging`.
 
+Note: Firefox does not run extensions in Private Browsing windows by default — the content script
+silently skips execution there, making demos appear broken. Always test in a normal window, or
+enable it via `about:addons` → the extension → "Run in Private Windows: Allow".
+
 ## Conventions
 - Conventional Commits. Commit/push only when the user asks.
