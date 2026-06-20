@@ -26,8 +26,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** badge appears on a watch page and re-appears when you click to another video.
 
 ## M3 — Detect the real channel from the page
-- [ ] Parse channel handle/ID from the DOM
-- [ ] Badge shows the detected channel
+- [x] Parse channel handle/ID from the DOM
+- [x] Badge shows the detected channel
 - **Demo:** badge shows the actual channel handle/ID across several videos.
 
 ## M4 — Options page + API key storage
