@@ -31,6 +31,44 @@
         font-size: 1rem;
         font-family: monospace;
       }
+      input[type="number"] {
+        width: 6rem;
+        box-sizing: border-box;
+        padding: 0.4rem;
+        font-size: 1rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-top: 2rem;
+      }
+      .field {
+        margin-top: 1rem;
+      }
+      .field .label-hint {
+        font-weight: 400;
+        color: #666;
+        font-size: 0.85rem;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 400;
+        margin-top: 0.5rem;
+      }
+      .check input {
+        margin: 0;
+      }
+      fieldset {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        margin-top: 1rem;
+        padding: 0.75rem 1rem 1rem;
+      }
+      legend {
+        font-weight: 600;
+        padding: 0 0.4rem;
+      }
       .row {
         display: flex;
         gap: 0.5rem;
@@ -42,15 +80,16 @@
         font-size: 1rem;
         cursor: pointer;
       }
-      #status {
+      #status,
+      #settingsStatus {
         margin-top: 0.75rem;
         min-height: 1.25rem;
         font-size: 0.9rem;
       }
-      #status.ok {
+      .ok {
         color: #2e7d32;
       }
-      #status.err {
+      .err {
         color: #c62828;
       }
       .hint {
@@ -88,6 +127,69 @@
       <div id="status" role="status" aria-live="polite"></div>
     </form>
 
+    <h2>Detection settings</h2>
+    <p>
+      Tune the publishing-rate heuristic. Lowering a threshold flags more channels;
+      changes apply the next time you open or navigate to a watch page (no need to
+      reload the add-on).
+    </p>
+
+    <form id="settingsForm">
+      <div class="field">
+        <label for="ratioThreshold">
+          Flag sustained rate above
+          <span class="label-hint">(videos per day since the channel was created)</span>
+        </label>
+        <input type="number" id="ratioThreshold" min="0.1" step="0.1" />
+      </div>
+
+      <fieldset>
+        <legend>New-channel rule</legend>
+        <p class="label-hint" style="margin: 0 0 0.5rem">
+          Also flag a very young channel that already has a lot of videos.
+        </p>
+        <div class="field" style="margin-top: 0.5rem">
+          <label for="newAgeDays">
+            Channel age cutoff <span class="label-hint">(days)</span>
+          </label>
+          <input type="number" id="newAgeDays" min="1" step="1" />
+        </div>
+        <div class="field">
+          <label for="newMinVideos">Video count to flag</label>
+          <input type="number" id="newMinVideos" min="1" step="1" />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Badges to show</legend>
+        <label class="check"
+          ><input type="checkbox" id="showFlagged" /> ⚠️ Flagged (suspicious rate)</label
+        >
+        <label class="check"
+          ><input type="checkbox" id="showLegit" /> ✅ Looks legit</label
+        >
+        <label class="check"
+          ><input type="checkbox" id="showNeutral" /> ❔ No verdict (no key, error,
+          unsupported)</label
+        >
+      </fieldset>
+
+      <fieldset>
+        <legend>Where to scan</legend>
+        <label class="check">
+          <input type="checkbox" id="scanFeed" /> Also scan feed / search /
+          recommendation thumbnails
+          <span class="label-hint">(arrives in M8; off = watch pages only)</span>
+        </label>
+      </fieldset>
+
+      <div class="row">
+        <button type="submit">Save settings</button>
+        <button type="button" id="reset">Reset to defaults</button>
+      </div>
+      <div id="settingsStatus" role="status" aria-live="polite"></div>
+    </form>
+
     <p class="hint">
       No key yet? Get one free: open the
       <a
@@ -103,6 +205,7 @@
       (10,000/day free quota). Tip: restrict the key to the YouTube Data API v3.
     </p>
 
+    <script src="settings.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

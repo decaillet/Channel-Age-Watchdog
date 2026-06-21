@@ -48,11 +48,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** revisit a channel → no second API call; remove key → page still works.
 
 ## M7 — Badge detail popup + configurable thresholds
-- [ ] Click badge → popup with channel age, video count, ratio
-- [ ] Options: ratio threshold, new-channel thresholds, watch-only vs feed toggle
-- [ ] Options: per-verdict badge visibility — let the user disable individual badges
+- [~] Click badge → popup with channel age, video count, ratio
+- [~] Options: ratio threshold, new-channel thresholds, watch-only vs feed toggle
+- [~] Options: per-verdict badge visibility — let the user disable individual badges
       (notably hide the green ✅ "legit" badge), keeping ⚠️ flagged / ❔ neutral
 - **Demo:** lower the threshold → a previously-unflagged channel now flags.
+- Code complete; awaiting Firefox demo. Notes:
+  - Shared `settings.js` (defaults + `getSettings()`) loaded first in all contexts.
+  - Thresholds recompute from cached facts, so lowering one re-flags on next visit
+    with no API call. Watch-only vs feed toggle is stored now; honored in M8.
 
 ## M8 — (Later pass) Feed / thumbnail scanning
 - [ ] Opt-in, debounced + rate-limited badges on feed/search/recommendation thumbnails

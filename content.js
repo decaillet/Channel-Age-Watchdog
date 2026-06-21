@@ -5,7 +5,14 @@
 console.log("Watchdog loaded");
 
 const BADGE_ID = "caw-badge";
+const POPUP_ID = "caw-popup";
 const NOTICE_ID = "caw-notice";
+
+// The settings in effect for the current evaluation (thresholds echoed back by the
+// background page live on the result; these drive per-verdict badge visibility and
+// the detail popup). Reloaded on every evaluation so Options changes apply on the
+// next navigation without reloading the add-on.
+let currentSettings = DEFAULT_SETTINGS;
 
 // The channel we've already evaluated for the current page, keyed as "kind:value".
 // Skipping re-evaluation of the same channel avoids both redundant API calls and a
@@ -161,56 +168,67 @@ function createBadge() {
     lineHeight: "1.4",
     whiteSpace: "nowrap",
     verticalAlign: "middle",
-    cursor: "default",
+    cursor: "pointer",
   });
   return badge;
 }
 
-// Show the badge with the real numbers — always, whether or not the channel is
-// flagged. ⚠️ (red) for a suspicious publishing rate, ✅ (green) when it looks legit.
-// Inserted next to the channel name; the tooltip carries the full breakdown.
-function showBadge(result) {
-  const owner = document.querySelector("ytd-video-owner-renderer #channel-name");
-  if (!owner) return;
+// Get or create the badge inside the owner element, wiring its click-to-popup
+// handler exactly once. The latest result is stashed on the element so the popup
+// renders from whatever verdict is currently showing.
+function ensureBadge(owner) {
+  let badge = document.getElementById(BADGE_ID);
+  if (badge) return badge;
+  badge = createBadge();
+  badge.addEventListener("click", (event) => {
+    event.stopPropagation(); // don't let the outside-click handler immediately close it
+    toggleDetailPopup(badge);
+  });
+  owner.appendChild(badge);
+  return badge;
+}
 
-  const ratioText = result.ratio != null ? `~${result.ratio.toFixed(2)}/day` : "very high rate";
-  const ageText = formatAge(result.ageDays);
-
-  let verdict;
+// Classify a found result into its verdict, returning the bits both the badge and the
+// detail popup need: icon, colour, a one-line summary, and the kind used to decide
+// per-verdict visibility (M7).
+function verdictInfo(result) {
   if (result.flagged) {
     const why =
       result.reason === "new+volume"
         ? "new channel, high upload volume"
         : "high sustained publishing rate";
-    verdict = {
+    return {
+      kind: "flagged",
       icon: "⚠️",
       color: "#c62828",
       summary: `Flagged: ${why} (publishing pattern, not AI detection)`,
     };
-  } else {
-    verdict = {
-      icon: "✅",
-      color: "#2e7d32",
-      summary: "Looks legit: publishing rate within normal range",
-    };
   }
+  return {
+    kind: "legit",
+    icon: "✅",
+    color: "#2e7d32",
+    summary: "Looks legit: publishing rate within normal range",
+  };
+}
 
-  let badge = document.getElementById(BADGE_ID);
-  if (!badge) {
-    badge = createBadge();
-    owner.appendChild(badge);
-  }
-  // A stale result is cached data served because the live refresh failed (quota,
-  // network, or no key). The verdict still holds; just note it may be out of date.
-  const staleNote = result.stale ? "\nCached data (could not refresh)" : "";
+// Show the badge with the real numbers. ⚠️ (red) for a suspicious publishing rate,
+// ✅ (green) when it looks legit. Inserted next to the channel name; clicking it opens
+// the detail popup (M7) with the full breakdown.
+function showBadge(result) {
+  const owner = document.querySelector("ytd-video-owner-renderer #channel-name");
+  if (!owner) return;
+
+  const verdict = verdictInfo(result);
+  const ageText = formatAge(result.ageDays);
+
+  const badge = ensureBadge(owner);
+  badge._result = result;
+  const staleNote = result.stale ? " (cached, could not refresh)" : "";
 
   badge.style.background = verdict.color;
   badge.textContent = `${verdict.icon} ${result.videoCount} videos in ${ageText}`;
-  badge.title =
-    `Channel Age Watchdog — ${result.title}\n` +
-    `${result.videoCount} videos · channel age ${ageText} · ${ratioText}\n` +
-    verdict.summary +
-    staleNote;
+  badge.title = `Channel Age Watchdog — ${result.title}\nClick for details${staleNote}`;
 }
 
 // Explain, in a few words, why we have no verdict for this channel.
@@ -238,20 +256,143 @@ function showNeutralBadge(result) {
   if (!owner) return;
 
   const message = neutralMessage(result);
-  let badge = document.getElementById(BADGE_ID);
-  if (!badge) {
-    badge = createBadge();
-    owner.appendChild(badge);
-  }
+  const badge = ensureBadge(owner);
+  badge._result = result;
   badge.style.background = "#616161";
   badge.textContent = `❔ ${message}`;
-  badge.title = `Channel Age Watchdog — ${message}`;
+  badge.title = `Channel Age Watchdog — ${message}\nClick for details`;
+}
+
+// One "label / value" line for the detail popup.
+function popupRow(label, value) {
+  const row = document.createElement("div");
+  Object.assign(row.style, {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: "16px",
+  });
+  const l = document.createElement("span");
+  l.textContent = label;
+  l.style.color = "#aaa";
+  const v = document.createElement("span");
+  v.textContent = value;
+  v.style.fontWeight = "600";
+  v.style.textAlign = "right";
+  row.append(l, v);
+  return row;
+}
+
+// Toggle the detail popup for the badge: clicking the badge again closes it.
+function toggleDetailPopup(badge) {
+  if (document.getElementById(POPUP_ID)) {
+    removePopup();
+    return;
+  }
+  showDetailPopup(badge);
+}
+
+// Build the breakdown rows from a found result (the case the M7 demo cares about:
+// channel age, video count, ratio vs the configured threshold).
+function foundPopupRows(result) {
+  const rows = [popupRow("Videos", String(result.videoCount)), popupRow("Channel age", formatAge(result.ageDays))];
+
+  const t = result.thresholds || {};
+  const ratioText = result.ratio != null ? `~${result.ratio.toFixed(2)}/day` : "very high";
+  const thresholdText = t.ratio != null ? ` (threshold ${t.ratio}/day)` : "";
+  rows.push(popupRow("Publishing rate", `${ratioText}${thresholdText}`));
+
+  if (result.publishedAt) {
+    rows.push(popupRow("Created", new Date(result.publishedAt).toLocaleDateString()));
+  }
+  return rows;
+}
+
+// Open the detail popup anchored under the badge. Renders from the result stashed on
+// the badge, so it works for both a found verdict and a neutral ❔ badge. Closes on
+// outside click, Escape, or scroll.
+function showDetailPopup(badge) {
+  const result = badge._result;
+  if (!result) return;
+
+  const popup = document.createElement("div");
+  popup.id = POPUP_ID;
+  Object.assign(popup.style, {
+    position: "fixed",
+    zIndex: "2147483647",
+    width: "280px",
+    padding: "12px 14px",
+    borderRadius: "10px",
+    background: "#212121",
+    color: "#fff",
+    fontSize: "13px",
+    lineHeight: "1.5",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  });
+
+  const header = document.createElement("div");
+  Object.assign(header.style, { fontWeight: "700", marginBottom: "2px" });
+
+  if (result.ok && result.found) {
+    const verdict = verdictInfo(result);
+    header.textContent = `${verdict.icon} ${result.title}`;
+    popup.appendChild(header);
+    foundPopupRows(result).forEach((row) => popup.appendChild(row));
+
+    const summary = document.createElement("div");
+    summary.textContent = verdict.summary;
+    Object.assign(summary.style, { color: "#ccc", marginTop: "4px", lineHeight: "1.4" });
+    popup.appendChild(summary);
+  } else {
+    header.textContent = "❔ No verdict";
+    popup.appendChild(header);
+    popup.appendChild(popupRow("Reason", neutralMessage(result)));
+  }
+
+  if (result.stale) {
+    const stale = document.createElement("div");
+    stale.textContent = "Cached data — could not refresh (quota, network, or no key).";
+    Object.assign(stale.style, { color: "#ffb74d", marginTop: "4px", lineHeight: "1.4" });
+    popup.appendChild(stale);
+  }
+
+  document.body.appendChild(popup);
+
+  // Anchor under the badge, clamped to the viewport so it never overflows the edge.
+  const rect = badge.getBoundingClientRect();
+  const left = Math.min(rect.left, window.innerWidth - popup.offsetWidth - 8);
+  popup.style.left = `${Math.max(8, left)}px`;
+  popup.style.top = `${rect.bottom + 6}px`;
+
+  document.addEventListener("click", onDocClickForPopup, true);
+  document.addEventListener("keydown", onKeydownForPopup, true);
+  window.addEventListener("scroll", removePopup, true);
+}
+
+function onDocClickForPopup(event) {
+  const popup = document.getElementById(POPUP_ID);
+  if (popup && !popup.contains(event.target)) removePopup();
+}
+
+function onKeydownForPopup(event) {
+  if (event.key === "Escape") removePopup();
+}
+
+function removePopup() {
+  document.getElementById(POPUP_ID)?.remove();
+  document.removeEventListener("click", onDocClickForPopup, true);
+  document.removeEventListener("keydown", onKeydownForPopup, true);
+  window.removeEventListener("scroll", removePopup, true);
 }
 
 // Ask the background page to evaluate the channel, then badge it with the result.
 // Stale responses (user moved on, or a different channel won the race) are dropped.
 async function evaluateChannel(channel, key) {
   const token = ++lookupToken;
+  currentSettings = await getSettings(); // reload so Options changes apply on navigation
   let result = null;
   try {
     result = await browser.runtime.sendMessage({ type: "lookupChannel", channel });
@@ -266,9 +407,15 @@ async function evaluateChannel(channel, key) {
   console.log(`Watchdog [${source}]`, key, result);
 
   if (result && result.ok && result.found) {
-    showBadge(result); // ✅ legit or ⚠️ flagged — show the numbers
-  } else {
+    // ✅ legit or ⚠️ flagged — show the numbers, unless that verdict is hidden (M7).
+    const { kind } = verdictInfo(result);
+    const visible = kind === "flagged" ? currentSettings.showFlagged : currentSettings.showLegit;
+    if (visible) showBadge(result);
+    else removeBadge();
+  } else if (currentSettings.showNeutral) {
     showNeutralBadge(result); // ❔ no key, API error, unsupported, or not found
+  } else {
+    removeBadge();
   }
 }
 
@@ -295,6 +442,7 @@ function syncBadge() {
 
 function removeBadge() {
   document.getElementById(BADGE_ID)?.remove();
+  removePopup(); // the popup is anchored to the badge — drop it too
 }
 
 // Watch the owner renderer so we re-sync whenever YouTube replaces its link

@@ -20,12 +20,12 @@
     "open_in_tab": true
   },
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["settings.js", "background.js"]
   },
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"],
+      "js": ["settings.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

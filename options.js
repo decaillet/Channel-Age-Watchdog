@@ -9,17 +9,23 @@ const input = document.getElementById("apiKey");
 const reveal = document.getElementById("reveal");
 const status = document.getElementById("status");
 
-let statusTimer = null;
+// Transient "Saved." / error feedback below a form. Each status element keeps its own
+// auto-clear timer so the key form and the settings form don't clobber each other.
+const statusTimers = new WeakMap();
 
-function showStatus(message, kind) {
-  status.textContent = message;
-  status.className = kind || "";
-  if (statusTimer) clearTimeout(statusTimer);
+function showStatus(el, message, kind) {
+  el.textContent = message;
+  el.className = kind || "";
+  const prev = statusTimers.get(el);
+  if (prev) clearTimeout(prev);
   if (message) {
-    statusTimer = setTimeout(() => {
-      status.textContent = "";
-      status.className = "";
-    }, 4000);
+    statusTimers.set(
+      el,
+      setTimeout(() => {
+        el.textContent = "";
+        el.className = "";
+      }, 4000)
+    );
   }
 }
 
@@ -29,7 +35,7 @@ async function load() {
     const stored = await browser.storage.local.get(STORAGE_KEY);
     if (stored[STORAGE_KEY]) input.value = stored[STORAGE_KEY];
   } catch (err) {
-    showStatus(`Could not read stored key: ${err.message}`, "err");
+    showStatus(status, `Could not read stored key: ${err.message}`, "err");
   }
 }
 
@@ -42,13 +48,13 @@ async function save(event) {
   try {
     if (key) {
       await browser.storage.local.set({ [STORAGE_KEY]: key });
-      showStatus("Saved.", "ok");
+      showStatus(status, "Saved.", "ok");
     } else {
       await browser.storage.local.remove(STORAGE_KEY);
-      showStatus("Key cleared.", "ok");
+      showStatus(status, "Key cleared.", "ok");
     }
   } catch (err) {
-    showStatus(`Could not save key: ${err.message}`, "err");
+    showStatus(status, `Could not save key: ${err.message}`, "err");
   }
 }
 
@@ -58,3 +64,73 @@ reveal.addEventListener("change", () => {
 
 form.addEventListener("submit", save);
 load();
+
+// --- Detection settings (M7) ---------------------------------------------------
+
+const settingsForm = document.getElementById("settingsForm");
+const settingsStatus = document.getElementById("settingsStatus");
+const fields = {
+  ratioThreshold: document.getElementById("ratioThreshold"),
+  newAgeDays: document.getElementById("newAgeDays"),
+  newMinVideos: document.getElementById("newMinVideos"),
+  scanFeed: document.getElementById("scanFeed"),
+  showFlagged: document.getElementById("showFlagged"),
+  showLegit: document.getElementById("showLegit"),
+  showNeutral: document.getElementById("showNeutral"),
+};
+const BOOLEAN_FIELDS = ["scanFeed", "showFlagged", "showLegit", "showNeutral"];
+
+// Populate the form from a settings object (defaults merged with stored values).
+function fillSettingsForm(settings) {
+  fields.ratioThreshold.value = settings.ratioThreshold;
+  fields.newAgeDays.value = settings.newAgeDays;
+  fields.newMinVideos.value = settings.newMinVideos;
+  for (const key of BOOLEAN_FIELDS) fields[key].checked = settings[key];
+}
+
+// getSettings() (settings.js) already sanitises numbers and merges defaults, so the
+// form always loads with valid, complete values.
+async function loadSettings() {
+  fillSettingsForm(await getSettings());
+}
+
+// Save the form. Numeric inputs are validated here so a blank/zero/negative value is
+// rejected with a clear message rather than silently disabling the heuristic.
+async function saveSettings(event) {
+  event.preventDefault();
+
+  const numbers = {};
+  for (const key of ["ratioThreshold", "newAgeDays", "newMinVideos"]) {
+    const value = Number(fields[key].value);
+    if (!Number.isFinite(value) || value <= 0) {
+      showStatus(settingsStatus, "Thresholds must be positive numbers.", "err");
+      return;
+    }
+    numbers[key] = value;
+  }
+
+  const settings = { ...numbers };
+  for (const key of BOOLEAN_FIELDS) settings[key] = fields[key].checked;
+
+  try {
+    await browser.storage.local.set({ [SETTINGS_KEY]: settings });
+    showStatus(settingsStatus, "Settings saved.", "ok");
+  } catch (err) {
+    showStatus(settingsStatus, `Could not save settings: ${err.message}`, "err");
+  }
+}
+
+// Reset the form to defaults and persist them in one step.
+async function resetSettings() {
+  fillSettingsForm(DEFAULT_SETTINGS);
+  try {
+    await browser.storage.local.set({ [SETTINGS_KEY]: { ...DEFAULT_SETTINGS } });
+    showStatus(settingsStatus, "Reset to defaults.", "ok");
+  } catch (err) {
+    showStatus(settingsStatus, `Could not reset: ${err.message}`, "err");
+  }
+}
+
+settingsForm.addEventListener("submit", saveSettings);
+document.getElementById("reset").addEventListener("click", resetSettings);
+loadSettings();

@@ -12,10 +12,8 @@ const API_BASE = "https://www.googleapis.com/youtube/v3/channels";
 // add-on's "Inspect" console during the demo.
 const LOG = "[Watchdog]";
 
-// Default heuristic thresholds. M7 will make these configurable.
-const RATIO_THRESHOLD = 1.0; // sustained videos/day since creation
-const NEW_AGE_DAYS = 30; // "brand new" cutoff for the absolute rule
-const NEW_MIN_VIDEOS = 50; // min videos for the new-channel rule
+// Heuristic thresholds are user-configurable as of M7; their defaults and the
+// getSettings() loader live in settings.js (loaded before this file).
 const MS_PER_DAY = 86400000;
 
 // M6: cache channel facts so revisiting a channel costs no API call. We store the
@@ -60,10 +58,12 @@ async function writeCache(key, entry) {
 }
 
 // Turn a cache entry into the same result shape lookupChannel returns. `stale` marks
-// a fallback served because the live refresh failed, so the badge can hint at it.
-function verdictFromCache(entry, stale) {
+// a fallback served because the live refresh failed, so the badge can hint at it. The
+// verdict is recomputed against the current settings, so changing a threshold (M7)
+// re-flags a cached channel on the next visit without any API call.
+function verdictFromCache(entry, stale, settings) {
   if (entry.found === false) return { ok: true, found: false, cached: true, stale };
-  return { ...evaluate(entry.facts), cached: true, stale };
+  return { ...evaluate(entry.facts, settings), cached: true, stale };
 }
 
 // Map a detected channel to the channels.list selector it needs. Handles carry
@@ -82,15 +82,17 @@ function lookupParam(channel) {
   }
 }
 
-// Apply the publishing-rate heuristic to a channel's raw facts. Kept separate from
-// fetching so it can run on both fresh API data and cached facts; age and ratio are
-// always recomputed against "now" so a cached entry never reports a stale age.
-function evaluate(facts) {
+// Apply the publishing-rate heuristic to a channel's raw facts, using the user's
+// configured thresholds (M7). Kept separate from fetching so it can run on both fresh
+// API data and cached facts; age and ratio are always recomputed against "now" so a
+// cached entry never reports a stale age. The thresholds used are echoed back so the
+// detail popup can show "rate vs threshold".
+function evaluate(facts, settings) {
   const { channelId, title, publishedAt, videoCount } = facts;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / MS_PER_DAY;
   const ratio = ageDays > 0 ? videoCount / ageDays : Infinity;
-  const flaggedByRate = ratio > RATIO_THRESHOLD;
-  const flaggedByNew = ageDays < NEW_AGE_DAYS && videoCount > NEW_MIN_VIDEOS;
+  const flaggedByRate = ratio > settings.ratioThreshold;
+  const flaggedByNew = ageDays < settings.newAgeDays && videoCount > settings.newMinVideos;
   const flagged = flaggedByRate || flaggedByNew;
 
   return {
@@ -104,6 +106,11 @@ function evaluate(facts) {
     videoCount,
     ageDays,
     ratio: Number.isFinite(ratio) ? ratio : null,
+    thresholds: {
+      ratio: settings.ratioThreshold,
+      newAgeDays: settings.newAgeDays,
+      newMinVideos: settings.newMinVideos,
+    },
   };
 }
 
@@ -112,11 +119,12 @@ function evaluate(facts) {
 // { ok: false, ... } so the page is never broken. M6: serve a fresh cache hit without
 // any API call, and fall back to a stale cache entry when the live refresh fails.
 async function lookupChannel(channel) {
+  const settings = await getSettings();
   const cacheKey = cacheKeyFor(channel);
   const cached = await getCacheEntry(cacheKey);
   if (isFresh(cached)) {
     console.log(`${LOG} cache hit (no API call):`, cacheKey);
-    return verdictFromCache(cached, false);
+    return verdictFromCache(cached, false, settings);
   }
 
   let apiKey;
@@ -124,14 +132,14 @@ async function lookupChannel(channel) {
     const stored = await browser.storage.local.get("apiKey");
     apiKey = stored.apiKey;
   } catch (err) {
-    if (cached) return verdictFromCache(cached, true);
+    if (cached) return verdictFromCache(cached, true, settings);
     return { ok: false, reason: "storage", message: err.message };
   }
   // Missing/invalid key is a silent no-op: serve any stale cache, else say so.
   if (!apiKey) {
     if (cached) {
       console.warn(`${LOG} no API key, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true);
+      return verdictFromCache(cached, true, settings);
     }
     return { ok: false, reason: "noKey" };
   }
@@ -154,7 +162,7 @@ async function lookupChannel(channel) {
   } catch (err) {
     if (cached) {
       console.warn(`${LOG} network error, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true);
+      return verdictFromCache(cached, true, settings);
     }
     return { ok: false, reason: "network", message: err.message };
   }
@@ -163,7 +171,7 @@ async function lookupChannel(channel) {
   if (!response.ok) {
     if (cached) {
       console.warn(`${LOG} API error ${response.status}, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true);
+      return verdictFromCache(cached, true, settings);
     }
     return {
       ok: false,
@@ -188,7 +196,7 @@ async function lookupChannel(channel) {
     videoCount,
   };
   await writeCache(cacheKey, { found: true, facts });
-  return evaluate(facts);
+  return evaluate(facts, settings);
 }
 
 // Returning a promise from the listener sends its resolved value back to the sender.
