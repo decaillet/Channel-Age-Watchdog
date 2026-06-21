@@ -91,9 +91,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   next visit. (Awaiting Firefox test.)
 
 ## M9 — README / docs polish
-- [ ] How to get a YouTube Data API key
-- [ ] How to load unpacked in Firefox + quota notes
-- [ ] "Suspicious publishing pattern, not AI detection" framing
+- [x] How to get a YouTube Data API key
+- [x] How to load unpacked in Firefox + quota notes
+- [x] "Suspicious publishing pattern, not AI detection" framing
+- Done — rewrote `readme.md` (kept the lowercase filename). Notes:
+  - API-key section: Cloud Console flow (enable YouTube Data API v3 → create
+    credentials → restrict the key), plus stored-only-in-`storage.local` framing.
+  - Load/quota: `about:debugging` steps, Private-Browsing gotcha, quota notes
+    (10k units/day, 1 unit per `channels.list`, 7-day cache, opt-in rate-limited
+    feed scan, no quota-counter per M11 rationale).
+  - "Not AI detection" callout up top + Non-goals; also added Options/Privacy.
 
 ## M10 — Better heuristic (co-design)
 - [ ] Co-design a stronger signal than the single `videos/day` ratio. The naive ratio
