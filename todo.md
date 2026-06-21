@@ -73,6 +73,23 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     shared M7 detail popup on click. Covers home, search, subscriptions, and the
     watch-page sidebar (`ytd-rich-item`/`video`/`compact-video`/`grid-video`).
 
+## M8.5 — Trusted channels (allowlist)
+- [x] "Trust this channel" button in the badge detail popup (next to "adjust
+      settings"); toggles to "stop trusting" for an already-trusted channel
+- [x] Trusted channels are never flagged, whatever their publishing rate; the badge
+      shows a distinct 🛡️ trusted verdict (follows the ✅ legit visibility toggle)
+- [x] Allowlist stored in `browser.storage.local` under `trusted`, keyed by canonical
+      channel ID (UC…); shared helpers in `settings.js`
+      (`getTrustedChannels`/`trustChannel`/`untrustChannel`)
+- [x] Options: "Trusted channels" section lists each trusted channel with a Remove
+      button + empty state
+- [x] Trusting/untrusting from a popup re-renders the current page immediately (watch
+      badge re-evaluates; matching feed badges drop); Options changes apply on the
+      next navigation
+- **Demo:** trust a flagged channel → ⚠️ turns into 🛡️ trusted and its feed badges
+  disappear; open Options → it's listed; Remove it → it can be flagged again on the
+  next visit. (Awaiting Firefox test.)
+
 ## M9 — README / docs polish
 - [ ] How to get a YouTube Data API key
 - [ ] How to load unpacked in Firefox + quota notes

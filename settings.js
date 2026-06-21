@@ -37,3 +37,39 @@ async function getSettings() {
   merged.ratioThreshold = positiveNumber(merged.ratioThreshold, DEFAULT_SETTINGS.ratioThreshold);
   return merged;
 }
+
+// --- Trusted channels (M8.5) ---------------------------------------------------
+// A user allowlist of channels that should never be flagged. Kept separate from
+// `settings` so it can grow without bloating that object. Keyed by the canonical
+// channel ID (UC…) — the most stable identity, available on every found result —
+// so a channel stays trusted whether reached via its handle, ID, or legacy URL.
+// Each entry stores the title (for the Options list) and when it was added.
+const TRUSTED_KEY = "trusted";
+
+// Read the trusted-channel map ({ channelId: { title, addedAt } }). Storage failures
+// degrade to "nothing trusted" so the extension still works.
+async function getTrustedChannels() {
+  try {
+    const got = await browser.storage.local.get(TRUSTED_KEY);
+    return got[TRUSTED_KEY] || {};
+  } catch {
+    return {};
+  }
+}
+
+// Add a channel to the allowlist. No-op without a channel ID (we can't key it).
+async function trustChannel(channelId, info) {
+  if (!channelId) return;
+  const map = await getTrustedChannels();
+  map[channelId] = { title: (info && info.title) || channelId, addedAt: Date.now() };
+  await browser.storage.local.set({ [TRUSTED_KEY]: map });
+}
+
+// Remove a channel from the allowlist.
+async function untrustChannel(channelId) {
+  const map = await getTrustedChannels();
+  if (channelId in map) {
+    delete map[channelId];
+    await browser.storage.local.set({ [TRUSTED_KEY]: map });
+  }
+}

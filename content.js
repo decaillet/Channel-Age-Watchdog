@@ -197,6 +197,14 @@ function ensureBadge(owner) {
 // detail popup need: icon, colour, a one-line summary, and the kind used to decide
 // per-verdict visibility (M7).
 function verdictInfo(result) {
+  if (result.trusted) {
+    return {
+      kind: "trusted",
+      icon: "🛡️",
+      color: "#1565c0",
+      summary: "Trusted by you — never flagged regardless of publishing rate",
+    };
+  }
   if (result.flagged) {
     return {
       kind: "flagged",
@@ -283,6 +291,23 @@ function popupRow(label, value) {
   return row;
 }
 
+// A small outline button for the popup action row (trust / adjust settings).
+function popupButton(label) {
+  const btn = document.createElement("button");
+  btn.textContent = label;
+  Object.assign(btn.style, {
+    cursor: "pointer",
+    border: "1px solid #555",
+    borderRadius: "6px",
+    padding: "5px 10px",
+    fontSize: "12px",
+    fontWeight: "600",
+    background: "transparent",
+    color: "#fff",
+  });
+  return btn;
+}
+
 // Toggle the detail popup for the badge: clicking the badge again closes it.
 function toggleDetailPopup(badge) {
   if (document.getElementById(POPUP_ID)) {
@@ -360,26 +385,40 @@ function showDetailPopup(badge) {
     popup.appendChild(stale);
   }
 
-  // Shortcut to the Options page so the threshold can be tweaked without leaving the video.
-  const settingsBtn = document.createElement("button");
-  settingsBtn.textContent = "adjust settings";
-  Object.assign(settingsBtn.style, {
-    cursor: "pointer",
-    border: "1px solid #555",
-    borderRadius: "6px",
-    padding: "5px 10px",
-    fontSize: "12px",
-    fontWeight: "600",
-    background: "transparent",
-    color: "#fff",
+  // Action buttons sit in a wrapping row under the breakdown.
+  const actions = document.createElement("div");
+  Object.assign(actions.style, {
+    display: "flex",
+    gap: "8px",
     marginTop: "8px",
-    alignSelf: "flex-start",
+    flexWrap: "wrap",
   });
+
+  // Trust / untrust the channel. Only for a found channel (we key trust by its
+  // canonical channel ID, which only a found result carries). A trusted channel is
+  // never flagged (M8.5); the change applies to this page immediately via onTrustChanged.
+  if (result.ok && result.found && result.channelId) {
+    const trustBtn = popupButton(result.trusted ? "stop trusting" : "trust this channel");
+    trustBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const { channelId } = result;
+      if (result.trusted) await untrustChannel(channelId);
+      else await trustChannel(channelId, { title: result.title });
+      removePopup();
+      onTrustChanged(channelId);
+    });
+    actions.appendChild(trustBtn);
+  }
+
+  // Shortcut to the Options page so the threshold can be tweaked without leaving the video.
+  const settingsBtn = popupButton("adjust settings");
   settingsBtn.addEventListener("click", () => {
     browser.runtime.sendMessage({ type: "openOptions" });
     removePopup();
   });
-  popup.appendChild(settingsBtn);
+  actions.appendChild(settingsBtn);
+
+  popup.appendChild(actions);
 
   document.body.appendChild(popup);
 
@@ -465,6 +504,23 @@ function syncBadge() {
 function removeBadge() {
   document.getElementById(BADGE_ID)?.remove();
   removePopup(); // the popup is anchored to the badge — drop it too
+}
+
+// Re-render the current page after the user trusts/untrusts a channel from a popup, so
+// the change shows immediately (Options-page changes still apply on the next
+// navigation). Forces the watch badge to re-evaluate, and drops any feed badges/cached
+// feed results for the affected channel so they re-evaluate against the new trust state
+// (a newly-trusted channel's ⚠️ badge disappears; an untrusted one can re-flag on
+// scroll). Other channels' badges are left untouched.
+function onTrustChanged(channelId) {
+  currentChannelKey = null; // force the watch badge to re-evaluate on the next syncBadge
+  for (const [key, result] of feedResultCache) {
+    if (result && result.channelId === channelId) feedResultCache.delete(key);
+  }
+  document.querySelectorAll(`.${FEED_BADGE_CLASS}`).forEach((badge) => {
+    if (badge._result && badge._result.channelId === channelId) badge.remove();
+  });
+  syncBadge();
 }
 
 // Watch the owner renderer so we re-sync whenever YouTube replaces its link

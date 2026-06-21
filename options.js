@@ -152,3 +152,62 @@ daysPerVideoField.addEventListener("input", () =>
 settingsForm.addEventListener("submit", saveSettings);
 document.getElementById("reset").addEventListener("click", resetSettings);
 loadSettings();
+
+// --- Trusted channels (M8.5) ---------------------------------------------------
+// List the user's trust allowlist with a per-row "Remove" button. Entries are added
+// from the in-page badge popup; this page is where they're reviewed and removed.
+
+const trustedList = document.getElementById("trustedList");
+
+// Build one row for a trusted channel: its title, a link to the channel, and Remove.
+function trustedRow(channelId, entry) {
+  const row = document.createElement("div");
+  row.className = "trusted-row";
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const title = document.createElement("div");
+  title.className = "title";
+  title.textContent = entry.title || channelId;
+  const sub = document.createElement("div");
+  sub.className = "sub";
+  const link = document.createElement("a");
+  link.href = `https://www.youtube.com/channel/${channelId}`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = channelId;
+  sub.append("Channel: ", link);
+  meta.append(title, sub);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.addEventListener("click", async () => {
+    await untrustChannel(channelId);
+    renderTrusted();
+  });
+
+  row.append(meta, remove);
+  return row;
+}
+
+// Render (or re-render) the trusted-channel list, sorted by title, with an empty state.
+async function renderTrusted() {
+  const map = await getTrustedChannels();
+  const ids = Object.keys(map);
+  trustedList.textContent = "";
+
+  if (ids.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "trusted-empty";
+    empty.textContent =
+      "No trusted channels yet. Use “trust this channel” on a channel badge to add one.";
+    trustedList.appendChild(empty);
+    return;
+  }
+
+  ids.sort((a, b) => (map[a].title || a).localeCompare(map[b].title || b));
+  for (const id of ids) trustedList.appendChild(trustedRow(id, map[id]));
+}
+
+renderTrusted();

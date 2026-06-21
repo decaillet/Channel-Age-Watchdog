@@ -61,9 +61,9 @@ async function writeCache(key, entry) {
 // a fallback served because the live refresh failed, so the badge can hint at it. The
 // verdict is recomputed against the current settings, so changing a threshold (M7)
 // re-flags a cached channel on the next visit without any API call.
-function verdictFromCache(entry, stale, settings) {
+function verdictFromCache(entry, stale, settings, trusted) {
   if (entry.found === false) return { ok: true, found: false, cached: true, stale };
-  return { ...evaluate(entry.facts, settings), cached: true, stale };
+  return { ...evaluate(entry.facts, settings, trusted), cached: true, stale };
 }
 
 // Map a detected channel to the channels.list selector it needs. Handles carry
@@ -86,18 +86,22 @@ function lookupParam(channel) {
 // configured thresholds (M7). Kept separate from fetching so it can run on both fresh
 // API data and cached facts; age and ratio are always recomputed against "now" so a
 // cached entry never reports a stale age. The thresholds used are echoed back so the
-// detail popup can show "rate vs threshold".
-function evaluate(facts, settings) {
+// detail popup can show "rate vs threshold". A channel on the user's trust allowlist
+// (M8.5) is never flagged regardless of its rate, and is marked `trusted` so the badge
+// can reflect it.
+function evaluate(facts, settings, trusted) {
   const { channelId, title, publishedAt, videoCount } = facts;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / MS_PER_DAY;
   const ratio = ageDays > 0 ? videoCount / ageDays : Infinity;
-  const flagged = ratio > settings.ratioThreshold;
+  const isTrusted = Boolean(trusted && trusted[channelId]);
+  const flagged = !isTrusted && ratio > settings.ratioThreshold;
 
   return {
     ok: true,
     found: true,
     flagged,
-    reason: flagged ? "rate" : null,
+    trusted: isTrusted,
+    reason: isTrusted ? "trusted" : flagged ? "rate" : null,
     channelId,
     title,
     publishedAt,
@@ -116,11 +120,12 @@ function evaluate(facts, settings) {
 // any API call, and fall back to a stale cache entry when the live refresh fails.
 async function lookupChannel(channel) {
   const settings = await getSettings();
+  const trusted = await getTrustedChannels();
   const cacheKey = cacheKeyFor(channel);
   const cached = await getCacheEntry(cacheKey);
   if (isFresh(cached)) {
     console.log(`${LOG} cache hit (no API call):`, cacheKey);
-    return verdictFromCache(cached, false, settings);
+    return verdictFromCache(cached, false, settings, trusted);
   }
 
   let apiKey;
@@ -128,14 +133,14 @@ async function lookupChannel(channel) {
     const stored = await browser.storage.local.get("apiKey");
     apiKey = stored.apiKey;
   } catch (err) {
-    if (cached) return verdictFromCache(cached, true, settings);
+    if (cached) return verdictFromCache(cached, true, settings, trusted);
     return { ok: false, reason: "storage", message: err.message };
   }
   // Missing/invalid key is a silent no-op: serve any stale cache, else say so.
   if (!apiKey) {
     if (cached) {
       console.warn(`${LOG} no API key, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings);
+      return verdictFromCache(cached, true, settings, trusted);
     }
     return { ok: false, reason: "noKey" };
   }
@@ -158,7 +163,7 @@ async function lookupChannel(channel) {
   } catch (err) {
     if (cached) {
       console.warn(`${LOG} network error, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings);
+      return verdictFromCache(cached, true, settings, trusted);
     }
     return { ok: false, reason: "network", message: err.message };
   }
@@ -167,7 +172,7 @@ async function lookupChannel(channel) {
   if (!response.ok) {
     if (cached) {
       console.warn(`${LOG} API error ${response.status}, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings);
+      return verdictFromCache(cached, true, settings, trusted);
     }
     return {
       ok: false,
@@ -192,7 +197,7 @@ async function lookupChannel(channel) {
     videoCount,
   };
   await writeCache(cacheKey, { found: true, facts });
-  return evaluate(facts, settings);
+  return evaluate(facts, settings, trusted);
 }
 
 // Returning a promise from the listener sends its resolved value back to the sender.

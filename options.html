@@ -118,6 +118,37 @@
         border-top: 1px solid #ccc;
         padding-top: 1rem;
       }
+      .trusted-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #ddd;
+      }
+      .trusted-row .meta {
+        min-width: 0;
+      }
+      .trusted-row .title {
+        font-weight: 600;
+        word-break: break-word;
+      }
+      .trusted-row .sub {
+        font-size: 0.8rem;
+        color: #666;
+      }
+      .trusted-row .sub a {
+        color: inherit;
+      }
+      .trusted-row button {
+        flex: none;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.85rem;
+      }
+      .trusted-empty {
+        color: #666;
+        font-size: 0.9rem;
+      }
     </style>
   </head>
   <body>
@@ -224,6 +255,15 @@
       </div>
       <div id="settingsStatus" role="status" aria-live="polite"></div>
     </form>
+
+    <h2>Trusted channels</h2>
+    <p>
+      Channels you trust are never flagged, whatever their publishing rate. Add one
+      with the <strong>"trust this channel"</strong> button in a channel badge's
+      detail popup. Removing a channel here lets it be flagged again on your next
+      visit.
+    </p>
+    <div id="trustedList" aria-live="polite"></div>
 
     <script src="settings.js"></script>
     <script src="options.js"></script>
