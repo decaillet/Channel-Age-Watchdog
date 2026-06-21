@@ -69,9 +69,9 @@ async function writeCache(key, entry) {
 // a fallback served because the live refresh failed, so the badge can hint at it. The
 // verdict is recomputed against the current settings, so changing a threshold (M7)
 // re-flags a cached channel on the next visit without any API call.
-function verdictFromCache(entry, stale, settings, trusted) {
+function verdictFromCache(entry, stale, settings, trusted, blocked) {
   if (entry.found === false) return { ok: true, found: false, cached: true, stale };
-  return { ...evaluate(entry.facts, settings, trusted), cached: true, stale };
+  return { ...evaluate(entry.facts, settings, trusted, blocked), cached: true, stale };
 }
 
 // Map a detected channel to the channels.list selector it needs. Handles carry
@@ -96,7 +96,9 @@ function lookupParam(channel) {
 // against "now" so a cached entry never reports a stale age. The thresholds used are
 // echoed back so the detail popup can show "rate vs threshold". A channel on the user's
 // trust allowlist (M8.5) is never flagged regardless of its rate, and is marked
-// `trusted` so the badge can reflect it.
+// `trusted` so the badge can reflect it. Conversely, a channel on the user's manual
+// blocklist is always flagged regardless of its rate, and marked `manuallyFlagged`.
+// The two lists are mutually exclusive (settings.js); trust wins by construction.
 //
 // M10: a channel is flagged only when all three conditions hold at once (logical AND):
 //   1. high publishing rate — ratio = videoCount / ageDays > ratioThreshold (the gate)
@@ -112,7 +114,7 @@ function lookupParam(channel) {
 // is cheap. So a hidden count counts as "low subs" (condition 3 met) rather than a free
 // pass. Conditions 1 and 2 still gate the flag, so a legit channel that hides its count
 // but has real views and a sane publishing rate is unaffected.
-function evaluate(facts, settings, trusted) {
+function evaluate(facts, settings, trusted, blocked) {
   const { channelId, title, publishedAt, videoCount, viewCount, subscriberCount, hiddenSubscriberCount } =
     facts;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / MS_PER_DAY;
@@ -130,14 +132,17 @@ function evaluate(facts, settings, trusted) {
     hiddenSubscriberCount || (subsPerVideo != null && subsPerVideo < settings.maxSubsPerVideo);
 
   const isTrusted = Boolean(trusted && trusted[channelId]);
-  const flagged = !isTrusted && highRate && lowViews && lowSubs;
+  const isManuallyFlagged = !isTrusted && Boolean(blocked && blocked[channelId]);
+  const heuristicFlag = highRate && lowViews && lowSubs;
+  const flagged = !isTrusted && (isManuallyFlagged || heuristicFlag);
 
   return {
     ok: true,
     found: true,
     flagged,
     trusted: isTrusted,
-    reason: isTrusted ? "trusted" : flagged ? "rate" : null,
+    manuallyFlagged: isManuallyFlagged,
+    reason: isTrusted ? "trusted" : isManuallyFlagged ? "manual" : heuristicFlag ? "rate" : null,
     channelId,
     title,
     publishedAt,
@@ -162,11 +167,12 @@ function evaluate(facts, settings, trusted) {
 async function lookupChannel(channel) {
   const settings = await getSettings();
   const trusted = await getTrustedChannels();
+  const blocked = await getFlaggedChannels();
   const cacheKey = cacheKeyFor(channel);
   const cached = await getCacheEntry(cacheKey);
   if (isFresh(cached) && hasEngagementFacts(cached)) {
     console.log(`${LOG} cache hit (no API call):`, cacheKey);
-    return verdictFromCache(cached, false, settings, trusted);
+    return verdictFromCache(cached, false, settings, trusted, blocked);
   }
 
   let apiKey;
@@ -174,14 +180,14 @@ async function lookupChannel(channel) {
     const stored = await browser.storage.local.get("apiKey");
     apiKey = stored.apiKey;
   } catch (err) {
-    if (cached) return verdictFromCache(cached, true, settings, trusted);
+    if (cached) return verdictFromCache(cached, true, settings, trusted, blocked);
     return { ok: false, reason: "storage", message: err.message };
   }
   // Missing/invalid key is a silent no-op: serve any stale cache, else say so.
   if (!apiKey) {
     if (cached) {
       console.warn(`${LOG} no API key, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings, trusted);
+      return verdictFromCache(cached, true, settings, trusted, blocked);
     }
     return { ok: false, reason: "noKey" };
   }
@@ -204,7 +210,7 @@ async function lookupChannel(channel) {
   } catch (err) {
     if (cached) {
       console.warn(`${LOG} network error, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings, trusted);
+      return verdictFromCache(cached, true, settings, trusted, blocked);
     }
     return { ok: false, reason: "network", message: err.message };
   }
@@ -213,7 +219,7 @@ async function lookupChannel(channel) {
   if (!response.ok) {
     if (cached) {
       console.warn(`${LOG} API error ${response.status}, serving stale cache:`, cacheKey);
-      return verdictFromCache(cached, true, settings, trusted);
+      return verdictFromCache(cached, true, settings, trusted, blocked);
     }
     return {
       ok: false,
@@ -245,7 +251,7 @@ async function lookupChannel(channel) {
     hiddenSubscriberCount: Boolean(stats.hiddenSubscriberCount),
   };
   await writeCache(cacheKey, { found: true, facts });
-  return evaluate(facts, settings, trusted);
+  return evaluate(facts, settings, trusted, blocked);
 }
 
 // M11: validate a key with a single witness channels.list call (1 unit, same cost as

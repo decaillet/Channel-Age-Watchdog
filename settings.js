@@ -66,11 +66,14 @@ async function getTrustedChannels() {
 }
 
 // Add a channel to the allowlist. No-op without a channel ID (we can't key it).
+// Trust and manual-flag are mutually exclusive overrides, so trusting a channel also
+// removes any manual flag on it.
 async function trustChannel(channelId, info) {
   if (!channelId) return;
   const map = await getTrustedChannels();
   map[channelId] = { title: (info && info.title) || channelId, addedAt: Date.now() };
   await browser.storage.local.set({ [TRUSTED_KEY]: map });
+  await unflagChannel(channelId);
 }
 
 // Remove a channel from the allowlist.
@@ -79,5 +82,42 @@ async function untrustChannel(channelId) {
   if (channelId in map) {
     delete map[channelId];
     await browser.storage.local.set({ [TRUSTED_KEY]: map });
+  }
+}
+
+// --- Manually flagged channels (blocklist) -------------------------------------
+// The opposite of the trust allowlist: a channel the user marks as suspicious by
+// hand. A manually-flagged channel always shows the ⚠️ flagged verdict regardless of
+// its publishing rate or engagement. Same shape and storage strategy as `trusted`
+// (keyed by canonical channel ID, stores title + addedAt), kept under its own key.
+const FLAGGED_KEY = "flagged";
+
+// Read the manually-flagged map ({ channelId: { title, addedAt } }). Storage failures
+// degrade to "nothing flagged" so the extension still works.
+async function getFlaggedChannels() {
+  try {
+    const got = await browser.storage.local.get(FLAGGED_KEY);
+    return got[FLAGGED_KEY] || {};
+  } catch {
+    return {};
+  }
+}
+
+// Add a channel to the blocklist. No-op without a channel ID. Mutually exclusive with
+// trust, so flagging a channel also removes it from the trust allowlist.
+async function flagChannel(channelId, info) {
+  if (!channelId) return;
+  const map = await getFlaggedChannels();
+  map[channelId] = { title: (info && info.title) || channelId, addedAt: Date.now() };
+  await browser.storage.local.set({ [FLAGGED_KEY]: map });
+  await untrustChannel(channelId);
+}
+
+// Remove a channel from the blocklist.
+async function unflagChannel(channelId) {
+  const map = await getFlaggedChannels();
+  if (channelId in map) {
+    delete map[channelId];
+    await browser.storage.local.set({ [FLAGGED_KEY]: map });
   }
 }

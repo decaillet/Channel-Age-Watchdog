@@ -233,7 +233,9 @@ function verdictInfo(result) {
       kind: "flagged",
       icon: "⚠️",
       color: "#c62828",
-      summary: "Flagged: high sustained publishing rate (publishing pattern, not AI detection)",
+      summary: result.manuallyFlagged
+        ? "Flagged by you — manually marked, regardless of publishing rate"
+        : "Flagged: high sustained publishing rate (publishing pattern, not AI detection)",
     };
   }
   return {
@@ -295,8 +297,16 @@ function showNeutralBadge(result) {
   badge.title = `Channel Age Watchdog — ${message}\nClick for details`;
 }
 
-// One "label / value" line for the detail popup.
-function popupRow(label, value) {
+// Value colours for the three heuristic-condition rows (M14): red when the condition
+// is met (it pushes the channel toward being flagged), green when it isn't (this is
+// part of why the channel is NOT flagged). A flagged channel shows all-red; a legit
+// one shows at least one green explaining the escape. Unknown metrics stay default.
+const VALUE_MET = "#ef5350"; // suspicious side — counts toward flagging
+const VALUE_CLEAR = "#66bb6a"; // healthy side — clears this floor
+
+// One "label / value" line for the detail popup. `valueColor` tints the value (used
+// by the condition rows); omit it for plain rows, which stay the default colour.
+function popupRow(label, value, valueColor) {
   const row = document.createElement("div");
   Object.assign(row.style, {
     display: "flex",
@@ -310,22 +320,25 @@ function popupRow(label, value) {
   v.textContent = value;
   v.style.fontWeight = "600";
   v.style.textAlign = "right";
+  if (valueColor) v.style.color = valueColor;
   row.append(l, v);
   return row;
 }
 
-// A small outline button for the popup action row (trust / adjust settings).
-function popupButton(label) {
+// A small button for the popup action row (trust / flag / adjust settings). Outline by
+// default; pass `activeColor` to render it filled, signalling the override it controls
+// is currently on (e.g. the trust button when the channel is already trusted).
+function popupButton(label, activeColor) {
   const btn = document.createElement("button");
   btn.textContent = label;
   Object.assign(btn.style, {
     cursor: "pointer",
-    border: "1px solid #555",
+    border: activeColor ? `1px solid ${activeColor}` : "1px solid #555",
     borderRadius: "6px",
     padding: "5px 10px",
     fontSize: "12px",
     fontWeight: "600",
-    background: "transparent",
+    background: activeColor || "transparent",
     color: "#fff",
   });
   return btn;
@@ -345,30 +358,47 @@ function toggleDetailPopup(badge) {
 function foundPopupRows(result) {
   const rows = [popupRow("Videos", String(result.videoCount)), popupRow("Channel age", formatAge(result.ageDays))];
 
+  // The three heuristic conditions, each coloured red (met → pushes toward flagging)
+  // or green (not met → why the channel escapes). Logic mirrors evaluate() in
+  // background.js; an unknown metric counts as not-met there, so we leave it uncoloured
+  // rather than imply green. A manually-flagged channel still shows the real numbers so
+  // the colours stay meaningful even though the manual flag overrides the verdict.
   const t = result.thresholds || {};
+
+  // 1. Publishing rate — a null ratio means "very high" (age <= 0), which is met.
   const ratioText = result.ratio != null ? `~${result.ratio.toFixed(2)}/day` : "very high";
   const thresholdText = t.ratio != null ? ` (threshold ${t.ratio}/day)` : "";
-  rows.push(popupRow("Publishing rate", `${ratioText}${thresholdText}`));
+  const highRate = result.ratio == null || (t.ratio != null && result.ratio > t.ratio);
+  rows.push(popupRow("Publishing rate", `${ratioText}${thresholdText}`, highRate ? VALUE_MET : VALUE_CLEAR));
 
-  // M10 engagement floors. A null metric means "unknown" (no videos, or hidden subs);
-  // show that explicitly rather than a misleading number.
+  // 2. Views / video. A null metric means "unknown" (no videos); show it plainly.
   const viewsText =
     result.viewsPerVideo != null ? `~${Math.round(result.viewsPerVideo).toLocaleString()}` : "unknown";
   const viewsThreshold =
     t.maxViewsPerVideo != null ? ` (flag below ${t.maxViewsPerVideo.toLocaleString()})` : "";
-  rows.push(popupRow("Views / video", `${viewsText}${viewsThreshold}`));
+  const lowViews =
+    result.viewsPerVideo != null && t.maxViewsPerVideo != null && result.viewsPerVideo < t.maxViewsPerVideo;
+  const viewsColor = result.viewsPerVideo == null ? null : lowViews ? VALUE_MET : VALUE_CLEAR;
+  rows.push(popupRow("Views / video", `${viewsText}${viewsThreshold}`, viewsColor));
 
+  // 3. Subscribers / video. A hidden count counts as "low" (met); a non-hidden but
+  // missing metric is unknown (uncoloured).
   let subsValue;
+  let subsColor;
   if (result.subsPerVideo != null) {
     const threshold =
       t.maxSubsPerVideo != null ? ` (flag below ${t.maxSubsPerVideo.toLocaleString()})` : "";
     subsValue = `~${Math.round(result.subsPerVideo).toLocaleString()}${threshold}`;
+    const lowSubs = t.maxSubsPerVideo != null && result.subsPerVideo < t.maxSubsPerVideo;
+    subsColor = lowSubs ? VALUE_MET : VALUE_CLEAR;
   } else if (result.hiddenSubscriberCount) {
     subsValue = "hidden (counts as low)";
+    subsColor = VALUE_MET;
   } else {
     subsValue = "unknown";
+    subsColor = null;
   }
-  rows.push(popupRow("Subscribers / video", subsValue));
+  rows.push(popupRow("Subscribers / video", subsValue, subsColor));
 
   if (result.publishedAt) {
     rows.push(popupRow("Created", new Date(result.publishedAt).toLocaleDateString()));
@@ -437,20 +467,39 @@ function showDetailPopup(badge) {
     flexWrap: "wrap",
   });
 
-  // Trust / untrust the channel. Only for a found channel (we key trust by its
-  // canonical channel ID, which only a found result carries). A trusted channel is
-  // never flagged (M8.5); the change applies to this page immediately via onTrustChanged.
+  // Trust / flag overrides. Only for a found channel (we key both lists by the
+  // canonical channel ID, which only a found result carries). Trust and manual flag are
+  // mutually exclusive opposites: a trusted channel is never flagged (M8.5), a
+  // manually-flagged one is always flagged. The active override renders filled. Either
+  // change applies to this page immediately via onChannelOverrideChanged.
   if (result.ok && result.found && result.channelId) {
-    const trustBtn = popupButton(result.trusted ? "stop trusting" : "trust this channel");
+    const { channelId, title } = result;
+
+    const trustBtn = popupButton(
+      result.trusted ? "stop trusting" : "trust this channel",
+      result.trusted ? "#1565c0" : null
+    );
     trustBtn.addEventListener("click", async (event) => {
       event.stopPropagation();
-      const { channelId } = result;
       if (result.trusted) await untrustChannel(channelId);
-      else await trustChannel(channelId, { title: result.title });
+      else await trustChannel(channelId, { title }); // also clears any manual flag
       removePopup();
-      onTrustChanged(channelId);
+      onChannelOverrideChanged(channelId);
     });
     actions.appendChild(trustBtn);
+
+    const flagBtn = popupButton(
+      result.manuallyFlagged ? "stop flagging" : "flag this channel",
+      result.manuallyFlagged ? "#c62828" : null
+    );
+    flagBtn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (result.manuallyFlagged) await unflagChannel(channelId);
+      else await flagChannel(channelId, { title }); // also clears any trust
+      removePopup();
+      onChannelOverrideChanged(channelId);
+    });
+    actions.appendChild(flagBtn);
   }
 
   // Shortcut to the Options page so the threshold can be tweaked without leaving the video.
@@ -582,13 +631,13 @@ function removeBadge() {
   removePopup(); // the popup is anchored to the badge — drop it too
 }
 
-// Re-render the current page after the user trusts/untrusts a channel from a popup, so
-// the change shows immediately (Options-page changes still apply on the next
-// navigation). Forces the watch badge to re-evaluate, and drops any feed badges/cached
-// feed results for the affected channel so they re-evaluate against the new trust state
-// (a newly-trusted channel's ⚠️ badge disappears; an untrusted one can re-flag on
-// scroll). Other channels' badges are left untouched.
-function onTrustChanged(channelId) {
+// Re-render the current page after the user changes a channel's trust/flag override
+// from a popup, so the change shows immediately (Options-page changes still apply on the
+// next navigation). Forces the watch badge to re-evaluate, and drops any feed
+// badges/cached feed results for the affected channel so they re-evaluate against the
+// new override (a newly-trusted channel's ⚠️ badge disappears; an untrusted or
+// manually-flagged one can (re-)flag on scroll). Other channels' badges are untouched.
+function onChannelOverrideChanged(channelId) {
   currentChannelKey = null; // force the watch badge to re-evaluate on the next syncBadge
   for (const [key, result] of feedResultCache) {
     if (result && result.channelId === channelId) feedResultCache.delete(key);

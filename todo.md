@@ -207,6 +207,22 @@ Design notes / open questions:
     review. The API secret is the user's; the user runs the sign command.
   - Unlisted self-distribution has no auto-update unless an `update_url` is added later.
 
+## M14 — Popup polish: colour-coded conditions + manual flag
+- [x] Detail popup colours the three heuristic-condition values: red when the condition
+      is met (pushes toward flagging), green when not (why the channel escapes), neutral
+      for unknown metrics. A flagged channel reads all-red; a legit one shows ≥1 green.
+- [x] "flag this channel" button in the badge popup — the opposite of trust. Manually
+      flagged channels always show ⚠️ regardless of rate/engagement. Toggles to "stop
+      flagging"; trust and manual flag are mutually exclusive (each clears the other).
+- [x] `settings.js`: `flagged` blocklist under its own key, with
+      `getFlaggedChannels`/`flagChannel`/`unflagChannel`; flag/trust clear each other.
+- [x] `background.js` `evaluate()`: a blocklisted channel is `manuallyFlagged` and always
+      flagged (trust still wins); recomputes on cached entries, zero extra quota.
+- [x] Options: "Flagged channels" section mirroring "Trusted channels" (list + Remove).
+- **Demo:** open a legit ✅ channel → green rows show why; flag it → turns ⚠️ and its
+  feed badges appear; trust it → flag clears and it goes 🛡️; manage both lists in
+  Options. (Awaiting Firefox test.)
+
 ---
 
 ## Non-goals (do not build)

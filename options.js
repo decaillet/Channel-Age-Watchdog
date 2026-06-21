@@ -213,14 +213,17 @@ settingsForm.addEventListener("submit", saveSettings);
 document.getElementById("reset").addEventListener("click", resetSettings);
 loadSettings();
 
-// --- Trusted channels (M8.5) ---------------------------------------------------
-// List the user's trust allowlist with a per-row "Remove" button. Entries are added
-// from the in-page badge popup; this page is where they're reviewed and removed.
+// --- Channel override lists (M8.5 trusted + M14 manually flagged) ----------------
+// The trust allowlist and the manual blocklist are managed identically here: each is a
+// list of channels with a per-row "Remove" button. Entries are added from the in-page
+// badge popup; this page is where they're reviewed and removed.
 
 const trustedList = document.getElementById("trustedList");
+const flaggedList = document.getElementById("flaggedList");
 
-// Build one row for a trusted channel: its title, a link to the channel, and Remove.
-function trustedRow(channelId, entry) {
+// Build one channel row: its title, a link to the channel, and a Remove button that
+// runs `onRemove(channelId)` then re-renders.
+function channelRow(channelId, entry, onRemove) {
   const row = document.createElement("div");
   row.className = "trusted-row";
 
@@ -242,32 +245,58 @@ function trustedRow(channelId, entry) {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.textContent = "Remove";
-  remove.addEventListener("click", async () => {
-    await untrustChannel(channelId);
-    renderTrusted();
-  });
+  remove.addEventListener("click", () => onRemove(channelId));
 
   row.append(meta, remove);
   return row;
 }
 
-// Render (or re-render) the trusted-channel list, sorted by title, with an empty state.
-async function renderTrusted() {
-  const map = await getTrustedChannels();
+// Render (or re-render) one override list into `container`, sorted by title, with an
+// empty state. `load` reads the map, `remove` drops one entry, `emptyText` is shown
+// when the list is empty.
+async function renderChannelList(container, load, remove, emptyText, rerender) {
+  const map = await load();
   const ids = Object.keys(map);
-  trustedList.textContent = "";
+  container.textContent = "";
 
   if (ids.length === 0) {
     const empty = document.createElement("p");
     empty.className = "trusted-empty";
-    empty.textContent =
-      "No trusted channels yet. Use “trust this channel” on a channel badge to add one.";
-    trustedList.appendChild(empty);
+    empty.textContent = emptyText;
+    container.appendChild(empty);
     return;
   }
 
   ids.sort((a, b) => (map[a].title || a).localeCompare(map[b].title || b));
-  for (const id of ids) trustedList.appendChild(trustedRow(id, map[id]));
+  for (const id of ids) {
+    container.appendChild(
+      channelRow(id, map[id], async (channelId) => {
+        await remove(channelId);
+        rerender();
+      })
+    );
+  }
+}
+
+function renderTrusted() {
+  return renderChannelList(
+    trustedList,
+    getTrustedChannels,
+    untrustChannel,
+    "No trusted channels yet. Use “trust this channel” on a channel badge to add one.",
+    renderTrusted
+  );
+}
+
+function renderFlagged() {
+  return renderChannelList(
+    flaggedList,
+    getFlaggedChannels,
+    unflagChannel,
+    "No manually flagged channels yet. Use “flag this channel” on a channel badge to add one.",
+    renderFlagged
+  );
 }
 
 renderTrusted();
+renderFlagged();
