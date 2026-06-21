@@ -47,6 +47,14 @@ function isFresh(entry) {
   return Boolean(entry) && Date.now() - entry.cachedAt <= CACHE_TTL_MS;
 }
 
+// M10 added viewCount/subscriberCount to a found entry's facts. An entry cached before
+// M10 lacks them, so its verdict can only report "unknown" engagement. Treat such an
+// entry as needing a refresh (re-fetch on next visit) rather than serving it as a fresh
+// hit forever. "not found" entries carry no facts and are always complete.
+function hasEngagementFacts(entry) {
+  return Boolean(entry) && (entry.found === false || (entry.facts && "viewCount" in entry.facts));
+}
+
 // Best-effort write; caching is an optimisation, so storage failures are ignored.
 async function writeCache(key, entry) {
   if (!key) return;
@@ -84,17 +92,45 @@ function lookupParam(channel) {
 
 // Apply the publishing-rate heuristic to a channel's raw facts, using the user's
 // configured thresholds (M7). Kept separate from fetching so it can run on both fresh
-// API data and cached facts; age and ratio are always recomputed against "now" so a
-// cached entry never reports a stale age. The thresholds used are echoed back so the
-// detail popup can show "rate vs threshold". A channel on the user's trust allowlist
-// (M8.5) is never flagged regardless of its rate, and is marked `trusted` so the badge
-// can reflect it.
+// API data and cached facts; age and the per-video metrics are always recomputed
+// against "now" so a cached entry never reports a stale age. The thresholds used are
+// echoed back so the detail popup can show "rate vs threshold". A channel on the user's
+// trust allowlist (M8.5) is never flagged regardless of its rate, and is marked
+// `trusted` so the badge can reflect it.
+//
+// M10: a channel is flagged only when all three conditions hold at once (logical AND):
+//   1. high publishing rate — ratio = videoCount / ageDays > ratioThreshold (the gate)
+//   2. low views per video  — viewCount / videoCount < maxViewsPerVideo
+//   3. low subs per video   — subscriberCount / videoCount < maxSubsPerVideo
+// AND-ing the two engagement floors onto the rate lets old prolific legit channels
+// escape while still catching high-volume low-engagement slop. A view metric we can't
+// compute (videoCount 0, or viewCount absent) counts as not-met, so an unknown there
+// never flags — we favour a false negative over a false positive.
+//
+// A *hidden* subscriber count is the exception: hiding the count is itself a weak
+// slop-adjacent signal, and since we only ever warn (never hide/block), a false warning
+// is cheap. So a hidden count counts as "low subs" (condition 3 met) rather than a free
+// pass. Conditions 1 and 2 still gate the flag, so a legit channel that hides its count
+// but has real views and a sane publishing rate is unaffected.
 function evaluate(facts, settings, trusted) {
-  const { channelId, title, publishedAt, videoCount } = facts;
+  const { channelId, title, publishedAt, videoCount, viewCount, subscriberCount, hiddenSubscriberCount } =
+    facts;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / MS_PER_DAY;
   const ratio = ageDays > 0 ? videoCount / ageDays : Infinity;
+
+  const viewsPerVideo = videoCount > 0 && Number.isFinite(viewCount) ? viewCount / videoCount : null;
+  const subsPerVideo =
+    videoCount > 0 && !hiddenSubscriberCount && Number.isFinite(subscriberCount)
+      ? subscriberCount / videoCount
+      : null;
+
+  const highRate = ratio > settings.ratioThreshold;
+  const lowViews = viewsPerVideo != null && viewsPerVideo < settings.maxViewsPerVideo;
+  const lowSubs =
+    hiddenSubscriberCount || (subsPerVideo != null && subsPerVideo < settings.maxSubsPerVideo);
+
   const isTrusted = Boolean(trusted && trusted[channelId]);
-  const flagged = !isTrusted && ratio > settings.ratioThreshold;
+  const flagged = !isTrusted && highRate && lowViews && lowSubs;
 
   return {
     ok: true,
@@ -108,8 +144,13 @@ function evaluate(facts, settings, trusted) {
     videoCount,
     ageDays,
     ratio: Number.isFinite(ratio) ? ratio : null,
+    viewsPerVideo,
+    subsPerVideo,
+    hiddenSubscriberCount: Boolean(hiddenSubscriberCount),
     thresholds: {
       ratio: settings.ratioThreshold,
+      maxViewsPerVideo: settings.maxViewsPerVideo,
+      maxSubsPerVideo: settings.maxSubsPerVideo,
     },
   };
 }
@@ -123,7 +164,7 @@ async function lookupChannel(channel) {
   const trusted = await getTrustedChannels();
   const cacheKey = cacheKeyFor(channel);
   const cached = await getCacheEntry(cacheKey);
-  if (isFresh(cached)) {
+  if (isFresh(cached) && hasEngagementFacts(cached)) {
     console.log(`${LOG} cache hit (no API call):`, cacheKey);
     return verdictFromCache(cached, false, settings, trusted);
   }
@@ -184,17 +225,24 @@ async function lookupChannel(channel) {
 
   const item = data.items && data.items[0];
   const publishedAt = item && item.snippet && item.snippet.publishedAt;
-  const videoCount = Number(item && item.statistics && item.statistics.videoCount);
+  const stats = (item && item.statistics) || {};
+  const videoCount = Number(stats.videoCount);
   if (!item || !publishedAt || !Number.isFinite(videoCount)) {
     await writeCache(cacheKey, { found: false });
     return { ok: true, found: false };
   }
 
+  // viewCount/subscriberCount already come back in the part=statistics response, so
+  // caching them for the M10 engagement floors adds zero quota. subscriberCount is
+  // omitted when the channel hides it; hiddenSubscriberCount records that case.
   const facts = {
     channelId: item.id,
     title: (item.snippet && item.snippet.title) || channel.value,
     publishedAt,
     videoCount,
+    viewCount: Number(stats.viewCount),
+    subscriberCount: Number(stats.subscriberCount),
+    hiddenSubscriberCount: Boolean(stats.hiddenSubscriberCount),
   };
   await writeCache(cacheKey, { found: true, facts });
   return evaluate(facts, settings, trusted);

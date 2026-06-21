@@ -120,6 +120,8 @@ const settingsForm = document.getElementById("settingsForm");
 const settingsStatus = document.getElementById("settingsStatus");
 const fields = {
   ratioThreshold: document.getElementById("ratioThreshold"),
+  maxViewsPerVideo: document.getElementById("maxViewsPerVideo"),
+  maxSubsPerVideo: document.getElementById("maxSubsPerVideo"),
   scanFeed: document.getElementById("scanFeed"),
   showFlagged: document.getElementById("showFlagged"),
   showLegit: document.getElementById("showLegit"),
@@ -149,6 +151,8 @@ function syncReciprocal(source, target) {
 function fillSettingsForm(settings) {
   fields.ratioThreshold.value = formatRate(settings.ratioThreshold);
   daysPerVideoField.value = formatRate(1 / settings.ratioThreshold);
+  fields.maxViewsPerVideo.value = formatRate(settings.maxViewsPerVideo);
+  fields.maxSubsPerVideo.value = formatRate(settings.maxSubsPerVideo);
   for (const key of BOOLEAN_FIELDS) fields[key].checked = settings[key];
 }
 
@@ -163,13 +167,20 @@ async function loadSettings() {
 async function saveSettings(event) {
   event.preventDefault();
 
-  const ratioThreshold = Number(fields.ratioThreshold.value);
-  if (!Number.isFinite(ratioThreshold) || ratioThreshold <= 0) {
-    showStatus(settingsStatus, "Threshold must be a positive number.", "err");
-    return;
+  const numeric = {
+    ratioThreshold: "Publishing-rate threshold",
+    maxViewsPerVideo: "Views-per-video threshold",
+    maxSubsPerVideo: "Subscribers-per-video threshold",
+  };
+  const settings = {};
+  for (const [key, label] of Object.entries(numeric)) {
+    const value = Number(fields[key].value);
+    if (!Number.isFinite(value) || value <= 0) {
+      showStatus(settingsStatus, `${label} must be a positive number.`, "err");
+      return;
+    }
+    settings[key] = value;
   }
-
-  const settings = { ratioThreshold };
   for (const key of BOOLEAN_FIELDS) settings[key] = fields[key].checked;
 
   try {

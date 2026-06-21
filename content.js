@@ -327,6 +327,26 @@ function foundPopupRows(result) {
   const thresholdText = t.ratio != null ? ` (threshold ${t.ratio}/day)` : "";
   rows.push(popupRow("Publishing rate", `${ratioText}${thresholdText}`));
 
+  // M10 engagement floors. A null metric means "unknown" (no videos, or hidden subs);
+  // show that explicitly rather than a misleading number.
+  const viewsText =
+    result.viewsPerVideo != null ? `~${Math.round(result.viewsPerVideo).toLocaleString()}` : "unknown";
+  const viewsThreshold =
+    t.maxViewsPerVideo != null ? ` (flag below ${t.maxViewsPerVideo.toLocaleString()})` : "";
+  rows.push(popupRow("Views / video", `${viewsText}${viewsThreshold}`));
+
+  let subsValue;
+  if (result.subsPerVideo != null) {
+    const threshold =
+      t.maxSubsPerVideo != null ? ` (flag below ${t.maxSubsPerVideo.toLocaleString()})` : "";
+    subsValue = `~${Math.round(result.subsPerVideo).toLocaleString()}${threshold}`;
+  } else if (result.hiddenSubscriberCount) {
+    subsValue = "hidden (counts as low)";
+  } else {
+    subsValue = "unknown";
+  }
+  rows.push(popupRow("Subscribers / video", subsValue));
+
   if (result.publishedAt) {
     rows.push(popupRow("Created", new Date(result.publishedAt).toLocaleDateString()));
   }

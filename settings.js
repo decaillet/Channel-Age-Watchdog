@@ -9,6 +9,12 @@ const SETTINGS_KEY = "settings";
 // Defaults mirror the original hardcoded heuristic (M5) and "show every badge".
 const DEFAULT_SETTINGS = {
   ratioThreshold: 1.0, // suspicious sustained videos/day since creation
+  // M10: engagement floors. A channel is flagged only when its publishing rate is high
+  // AND both of these per-video averages fall below their threshold (logical AND). Both
+  // are cumulative-lifetime metrics, so they favour older channels; defaults are tunable
+  // and niche/region-dependent — revisit as needed.
+  maxViewsPerVideo: 1000, // flag only if average views per video is below this
+  maxSubsPerVideo: 10, // flag only if average subscribers per video is below this
   scanFeed: false, // false = watch pages only; true = also scan feeds (M8)
   showFlagged: true, // ⚠️ suspicious publishing rate
   showLegit: true, // ✅ looks legit
@@ -35,6 +41,8 @@ async function getSettings() {
   }
   const merged = { ...DEFAULT_SETTINGS, ...stored };
   merged.ratioThreshold = positiveNumber(merged.ratioThreshold, DEFAULT_SETTINGS.ratioThreshold);
+  merged.maxViewsPerVideo = positiveNumber(merged.maxViewsPerVideo, DEFAULT_SETTINGS.maxViewsPerVideo);
+  merged.maxSubsPerVideo = positiveNumber(merged.maxSubsPerVideo, DEFAULT_SETTINGS.maxSubsPerVideo);
   return merged;
 }
 

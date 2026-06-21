@@ -229,6 +229,28 @@
         </p>
       </div>
 
+      <div class="field">
+        <label>
+          ...and engagement is low
+          <span class="label-hint"
+            >(a channel is flagged only when its rate is high <em>and</em> both of
+            these hold — this lets prolific but popular channels off the hook)</span
+          >
+        </label>
+        <div class="row">
+          <label for="maxViewsPerVideo" style="font-weight: 400; margin: 0"
+            >Average views per video below</label
+          >
+          <input type="number" id="maxViewsPerVideo" min="0" step="any" />
+        </div>
+        <div class="row">
+          <label for="maxSubsPerVideo" style="font-weight: 400; margin: 0"
+            >Average subscribers per video below</label
+          >
+          <input type="number" id="maxSubsPerVideo" min="0" step="any" />
+        </div>
+      </div>
+
       <fieldset>
         <legend>Badges to show</legend>
         <label class="check"

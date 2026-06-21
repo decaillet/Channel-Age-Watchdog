@@ -113,15 +113,15 @@ engagement floor lets those channels escape while still catching high-volume, lo
 slop. `viewCount`/`subscriberCount` already come back in the `part=statistics` response, so
 this adds zero quota.
 
-- [ ] `settings.js`: add `maxViewsPerVideo` + `maxSubsPerVideo` defaults; sanitize via
+- [x] `settings.js`: add `maxViewsPerVideo` + `maxSubsPerVideo` defaults; sanitize via
       `positiveNumber()`; keep `ratioThreshold`.
-- [ ] `background.js` `evaluate()`: read views/subs, compute the two per-video metrics, AND
+- [x] `background.js` `evaluate()`: read views/subs, compute the two per-video metrics, AND
       the three conditions. Guard `videoCount === 0` and hidden subscriber counts.
-- [ ] `background.js` cache: store `viewCount`/`subscriberCount`/`hiddenSubscriberCount` in
+- [x] `background.js` cache: store `viewCount`/`subscriberCount`/`hiddenSubscriberCount` in
       `facts` so the verdict recomputes on cached entries (old entries backfill on next
       7-day refresh).
-- [ ] Options: two new threshold inputs (views/video, subs/video) + labels.
-- [ ] Badge detail popup: show views/video and subs/video next to the ratio.
+- [x] Options: two new threshold inputs (views/video, subs/video) + labels.
+- [x] Badge detail popup: show views/video and subs/video next to the ratio.
 
 Design notes / open questions:
   - Does NOT address the slow-drip slop under-flag: condition 1 is still the gate, and AND
@@ -130,13 +130,32 @@ Design notes / open questions:
     verdict. Keep both for now; consider collapsing into one engagement floor later.
   - Both metrics are lifetime-cumulative → favour age. New slop has "low" views/subs for
     innocent reasons; old channels clear the floor by accumulation. Thresholds need care.
-  - Hidden subscriber count → condition 3 unknown. Default: treat as not-met (don't flag,
-    no false positive). Decide later whether to drop condition 3 in that case.
+  - Hidden subscriber count → DECIDED (post-demo): treat as condition 3 *met* ("counts as
+    low"), not a free pass. Hiding the count is a weak slop signal and we only ever warn,
+    so a false warning is cheap; conditions 1+2 still gate the flag, protecting legit
+    channels that hide subs but have real views / a sane rate. Popup shows "hidden
+    (counts as low)". (A non-hidden but genuinely-missing viewCount still counts as
+    not-met — only the explicit hidden flag is treated as low.)
   - "Low" thresholds are niche/language/region dependent. Ship tunable, revisit defaults.
 
-- **Demo:** TBD — pick a known slop channel and a known old-prolific-legit channel; lower
+- **Demo:** pick a known slop channel and a known old-prolific-legit channel; lower
   the videos/day threshold so both trip condition 1, then confirm only the slop one flags
-  once the engagement floors are in.
+  once the engagement floors are in. (Awaiting Firefox test.)
+- Implemented:
+  - `settings.js`: `maxViewsPerVideo` (default 1000) + `maxSubsPerVideo` (default 10),
+    both sanitised via `positiveNumber()`. Defaults are tunable placeholders — niche/
+    region dependent, revisit after real-world use.
+  - `background.js` `evaluate()`: computes `viewsPerVideo`/`subsPerVideo` and flags only
+    when `highRate && lowViews && lowSubs`. A metric we can't compute (videoCount 0, or
+    hidden subs) is treated as not-met, so an unknown never flags (favour false negative).
+    All three echoed back in `result` (+ `thresholds`) for the popup.
+  - `facts` now caches `viewCount`/`subscriberCount`/`hiddenSubscriberCount`; old entries
+    backfill on the next 7-day refresh (a pre-M10 entry lacks them → those conditions
+    read as not-met → it won't flag until refreshed). Verdict still recomputes on read.
+  - Options: "...and engagement is low" field with two number inputs; save validates all
+    three numeric thresholds as positive.
+  - Popup: "Views / video" and "Subscribers / video" rows next to the rate, each showing
+    the flag-below threshold; hidden subs render as "hidden", missing data as "unknown".
 
 ## M11 — API key status in Options (no quota counter)
 - [x] Show key state in Options: not set / set / "Test key" button that does one witness
