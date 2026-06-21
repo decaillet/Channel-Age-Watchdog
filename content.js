@@ -200,12 +200,17 @@ function showBadge(result) {
     badge = createBadge();
     owner.appendChild(badge);
   }
+  // A stale result is cached data served because the live refresh failed (quota,
+  // network, or no key). The verdict still holds; just note it may be out of date.
+  const staleNote = result.stale ? "\nCached data (could not refresh)" : "";
+
   badge.style.background = verdict.color;
   badge.textContent = `${verdict.icon} ${result.videoCount} videos in ${ageText}`;
   badge.title =
     `Channel Age Watchdog — ${result.title}\n` +
     `${result.videoCount} videos · channel age ${ageText} · ${ratioText}\n` +
-    verdict.summary;
+    verdict.summary +
+    staleNote;
 }
 
 // Explain, in a few words, why we have no verdict for this channel.
@@ -254,6 +259,11 @@ async function evaluateChannel(channel, key) {
     // background unavailable — fall through to a neutral badge, never break the page
   }
   if (token !== lookupToken || key !== currentChannelKey) return;
+
+  // Easy demo check from the normal page console: shows whether this came from the
+  // cache (no API call) and whether it was a stale fallback.
+  const source = result?.cached ? (result.stale ? "cache (stale fallback)" : "cache") : "API";
+  console.log(`Watchdog [${source}]`, key, result);
 
   if (result && result.ok && result.found) {
     showBadge(result); // ✅ legit or ⚠️ flagged — show the numbers

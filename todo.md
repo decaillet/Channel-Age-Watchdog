@@ -43,8 +43,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   unsupported channel → grey ❔ with reason.
 
 ## M6 — Caching + graceful no-op
-- [ ] Cache channel lookups in `browser.storage.local` (reuse ≥7 days)
-- [ ] Silent no-op on missing/invalid key or quota exceeded — never break the page
+- [x] Cache channel lookups in `browser.storage.local` (reuse ≥7 days)
+- [x] Silent no-op on missing/invalid key or quota exceeded — never break the page
 - **Demo:** revisit a channel → no second API call; remove key → page still works.
 
 ## M7 — Badge detail popup + configurable thresholds
