@@ -8,6 +8,8 @@ secrets.json
 web-ext-artifacts/
 *.xpi
 *.zip
+# web-ext signing cache (AMO upload UUID, not a secret)
+.amo-upload-uuid
 
 # Node (in case we add web-ext / tooling later)
 node_modules/

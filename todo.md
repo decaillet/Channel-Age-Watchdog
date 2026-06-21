@@ -195,17 +195,24 @@ Design notes / open questions:
     since there is no backend) before it becomes mandatory.
 
 ## M13 — Sign for self-distribution (unlisted .xpi)
-- [ ] User: create an AMO account at https://addons.mozilla.org/developers/
-- [ ] User: generate API credentials (JWT issuer + secret) at
+- [x] User: create an AMO account at https://addons.mozilla.org/developers/
+- [x] User: generate API credentials (JWT issuer + secret) at
       https://addons.mozilla.org/developers/addon/api/key/
-- [ ] Run `npm run sign -- --api-key=<issuer> --api-secret=<secret>` →
+- [x] Run `npm run sign -- --api-key=<issuer> --api-secret=<secret>` →
       Mozilla-signed `.xpi` in `web-ext-artifacts/`.
-- [ ] Install the signed `.xpi` in normal Firefox; confirm it survives a restart.
+- [x] Install the signed `.xpi` in normal Firefox; confirm it survives a restart.
 - **Demo:** install the signed `.xpi`, restart Firefox → extension still present and working.
-- Notes:
+- Done — demoed in Firefox (signed, installed, survived a full restart). Notes:
   - `--channel=unlisted` = signed for self-distribution, not listed on AMO, no public
     review. The API secret is the user's; the user runs the sign command.
   - Unlisted self-distribution has no auto-update unless an `update_url` is added later.
+  - `web-ext sign` uploads the package to Mozilla to sign it (code leaves the machine);
+    unlisted means no human review. Output `.xpi` lands in `web-ext-artifacts/` with a
+    hash-style name (e.g. `8a9ed36…-0.1.0.xpi`) — install via `about:addons` → gear →
+    "Install Add-on From File…".
+  - Mozilla won't sign the same version twice — bump `version` in `manifest.json` AND
+    `package.json` before re-signing.
+  - `.amo-upload-uuid` (web-ext upload cache, not a secret) is gitignored.
 
 ## M14 — Popup polish: colour-coded conditions + manual flag
 - [x] Detail popup colours the three heuristic-condition values: red when the condition
