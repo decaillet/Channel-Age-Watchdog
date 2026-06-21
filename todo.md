@@ -48,12 +48,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** revisit a channel → no second API call; remove key → page still works.
 
 ## M7 — Badge detail popup + configurable thresholds
-- [~] Click badge → popup with channel age, video count, ratio
-- [~] Options: ratio threshold, new-channel thresholds, watch-only vs feed toggle
-- [~] Options: per-verdict badge visibility — let the user disable individual badges
+- [x] Click badge → popup with channel age, video count, ratio
+- [x] Options: ratio threshold, new-channel thresholds, watch-only vs feed toggle
+- [x] Options: per-verdict badge visibility — let the user disable individual badges
       (notably hide the green ✅ "legit" badge), keeping ⚠️ flagged / ❔ neutral
 - **Demo:** lower the threshold → a previously-unflagged channel now flags.
-- Code complete; awaiting Firefox demo. Notes:
+- Done — demoed in Firefox. Notes:
   - Shared `settings.js` (defaults + `getSettings()`) loaded first in all contexts.
   - Single heuristic now: `ratio = videoCount / ageDays > ratioThreshold`. The
     earlier "new-channel" rule was dropped — see M10.
@@ -61,9 +61,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     with no API call. Watch-only vs feed toggle is stored now; honored in M8.
 
 ## M8 — Feed / thumbnail scanning
-- [~] Opt-in, debounced + rate-limited badges on feed/search/recommendation thumbnails
+- [x] Opt-in, debounced + rate-limited badges on feed/search/recommendation thumbnails
 - **Demo:** enable in Options → scroll homepage → flagged thumbnails get a corner badge, no API burst.
-- Code complete; awaiting Firefox demo. Notes:
+- Done — demoed in Firefox. Notes:
   - Gated on the existing `scanFeed` option; applies on the next navigation.
   - `IntersectionObserver` looks up only thumbnails scrolled into view; a debounced
     `MutationObserver` picks up infinite-scroll content.
