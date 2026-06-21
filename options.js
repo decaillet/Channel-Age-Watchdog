@@ -76,11 +76,30 @@ const fields = {
   showLegit: document.getElementById("showLegit"),
   showNeutral: document.getElementById("showNeutral"),
 };
+const daysPerVideoField = document.getElementById("daysPerVideo");
 const BOOLEAN_FIELDS = ["scanFeed", "showFlagged", "showLegit", "showNeutral"];
+
+// videos/day and days/video are reciprocals of the same rate. We only persist
+// ratioThreshold (videos/day); the days/video field is a UI convenience. Round to
+// drop floating-point noise (e.g. 1/3 -> 0.333333 rather than 0.33333333333) while
+// keeping enough precision that the round-trip stays stable.
+function formatRate(value) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return String(parseFloat(value.toPrecision(6)));
+}
+
+// Mirror an edited rate field into its reciprocal. Setting .value programmatically
+// does not fire an "input" event, so the two listeners never feed back into each
+// other. A blank/invalid/non-positive entry just clears the counterpart.
+function syncReciprocal(source, target) {
+  const n = Number(source.value);
+  target.value = source.value.trim() && Number.isFinite(n) && n > 0 ? formatRate(1 / n) : "";
+}
 
 // Populate the form from a settings object (defaults merged with stored values).
 function fillSettingsForm(settings) {
-  fields.ratioThreshold.value = settings.ratioThreshold;
+  fields.ratioThreshold.value = formatRate(settings.ratioThreshold);
+  daysPerVideoField.value = formatRate(1 / settings.ratioThreshold);
   for (const key of BOOLEAN_FIELDS) fields[key].checked = settings[key];
 }
 
@@ -122,6 +141,13 @@ async function resetSettings() {
     showStatus(settingsStatus, `Could not reset: ${err.message}`, "err");
   }
 }
+
+fields.ratioThreshold.addEventListener("input", () =>
+  syncReciprocal(fields.ratioThreshold, daysPerVideoField)
+);
+daysPerVideoField.addEventListener("input", () =>
+  syncReciprocal(daysPerVideoField, fields.ratioThreshold)
+);
 
 settingsForm.addEventListener("submit", saveSettings);
 document.getElementById("reset").addEventListener("click", resetSettings);

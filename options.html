@@ -75,6 +75,25 @@
         align-items: center;
         margin-top: 0.75rem;
       }
+      .rate-pair {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .rate-input {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+      .rate-input .label-hint {
+        order: -1;
+      }
+      .rate-sep {
+        align-self: center;
+        color: #666;
+        font-weight: 600;
+      }
       button {
         padding: 0.5rem 1rem;
         font-size: 1rem;
@@ -151,11 +170,25 @@
 
     <form id="settingsForm">
       <div class="field">
-        <label for="ratioThreshold">
-          Flag sustained rate above
-          <span class="label-hint">(videos per day since the channel was created)</span>
+        <label>
+          Flag channels publishing faster than
+          <span class="label-hint">(sustained rate since the channel was created)</span>
         </label>
-        <input type="number" id="ratioThreshold" min="0" step="any" />
+        <div class="rate-pair">
+          <div class="rate-input">
+            <span class="label-hint">... videos per day</span>
+            <input type="number" id="ratioThreshold" min="0" step="any" />
+          </div>
+          <span class="rate-sep">=</span>
+          <div class="rate-input">
+            <span class="label-hint">one video every ... days</span>
+            <input type="number" id="daysPerVideo" min="0" step="any" />
+          </div>
+        </div>
+        <p class="label-hint" style="margin-top: 0.4rem">
+          Two ways to say the same rate — edit whichever is easier; the other updates
+          to match.
+        </p>
       </div>
 
       <fieldset>
