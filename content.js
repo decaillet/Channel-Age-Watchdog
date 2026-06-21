@@ -355,6 +355,27 @@ function showDetailPopup(badge) {
     popup.appendChild(stale);
   }
 
+  // Shortcut to the Options page so the threshold can be tweaked without leaving the video.
+  const settingsBtn = document.createElement("button");
+  settingsBtn.textContent = "adjust settings";
+  Object.assign(settingsBtn.style, {
+    cursor: "pointer",
+    border: "1px solid #555",
+    borderRadius: "6px",
+    padding: "5px 10px",
+    fontSize: "12px",
+    fontWeight: "600",
+    background: "transparent",
+    color: "#fff",
+    marginTop: "8px",
+    alignSelf: "flex-start",
+  });
+  settingsBtn.addEventListener("click", () => {
+    browser.runtime.sendMessage({ type: "openOptions" });
+    removePopup();
+  });
+  popup.appendChild(settingsBtn);
+
   document.body.appendChild(popup);
 
   // Anchor under the badge, clamped to the viewport so it never overflows the edge.
