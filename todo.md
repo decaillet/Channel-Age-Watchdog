@@ -55,7 +55,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** lower the threshold → a previously-unflagged channel now flags.
 - Code complete; awaiting Firefox demo. Notes:
   - Shared `settings.js` (defaults + `getSettings()`) loaded first in all contexts.
-  - Thresholds recompute from cached facts, so lowering one re-flags on next visit
+  - Single heuristic now: `ratio = videoCount / ageDays > ratioThreshold`. The
+    earlier "new-channel" rule was dropped — see M10.
+  - Threshold recomputes from cached facts, so lowering it re-flags on next visit
     with no API call. Watch-only vs feed toggle is stored now; honored in M8.
 
 ## M8 — (Later pass) Feed / thumbnail scanning
@@ -66,6 +68,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] How to get a YouTube Data API key
 - [ ] How to load unpacked in Firefox + quota notes
 - [ ] "Suspicious publishing pattern, not AI detection" framing
+
+## M10 — Better heuristic (co-design)
+- [ ] Co-design a stronger signal than the single `videos/day` ratio. The naive ratio
+      over-flags old prolific channels and under-flags slow-drip slop; the dropped
+      "new-channel" rule was too blunt to keep.
+- [ ] Ideas to explore together: recent upload velocity (last N days vs lifetime),
+      upload regularity/burstiness, account age vs upload-start gap, per-category
+      norms. Decide what the YouTube Data API can actually supply within quota.
+- **Demo:** TBD once the heuristic is agreed.
 
 ---
 

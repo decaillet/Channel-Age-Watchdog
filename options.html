@@ -127,6 +127,21 @@
       <div id="status" role="status" aria-live="polite"></div>
     </form>
 
+    <p class="hint">
+      No key yet? Get one free: open the
+      <a
+        href="https://console.cloud.google.com/apis/library/youtube.googleapis.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Google Cloud Console</a
+      >, enable <strong>YouTube Data API v3</strong>, then create credentials
+      under <em>Credentials</em>. When asked what data you'll access, choose
+      <strong>Public data</strong> &mdash; this gives a plain API key (no OAuth
+      sign-in needed, since we only read public channel info). The
+      <code>channels.list</code> calls this extension makes cost 1 unit each
+      (10,000/day free quota). Tip: restrict the key to the YouTube Data API v3.
+    </p>
+
     <h2>Detection settings</h2>
     <p>
       Tune the publishing-rate heuristic. Lowering a threshold flags more channels;
@@ -140,25 +155,8 @@
           Flag sustained rate above
           <span class="label-hint">(videos per day since the channel was created)</span>
         </label>
-        <input type="number" id="ratioThreshold" min="0.1" step="0.1" />
+        <input type="number" id="ratioThreshold" min="0" step="any" />
       </div>
-
-      <fieldset>
-        <legend>New-channel rule</legend>
-        <p class="label-hint" style="margin: 0 0 0.5rem">
-          Also flag a very young channel that already has a lot of videos.
-        </p>
-        <div class="field" style="margin-top: 0.5rem">
-          <label for="newAgeDays">
-            Channel age cutoff <span class="label-hint">(days)</span>
-          </label>
-          <input type="number" id="newAgeDays" min="1" step="1" />
-        </div>
-        <div class="field">
-          <label for="newMinVideos">Video count to flag</label>
-          <input type="number" id="newMinVideos" min="1" step="1" />
-        </div>
-      </fieldset>
 
       <fieldset>
         <legend>Badges to show</legend>
@@ -189,21 +187,6 @@
       </div>
       <div id="settingsStatus" role="status" aria-live="polite"></div>
     </form>
-
-    <p class="hint">
-      No key yet? Get one free: open the
-      <a
-        href="https://console.cloud.google.com/apis/library/youtube.googleapis.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        >Google Cloud Console</a
-      >, enable <strong>YouTube Data API v3</strong>, then create credentials
-      under <em>Credentials</em>. When asked what data you'll access, choose
-      <strong>Public data</strong> &mdash; this gives a plain API key (no OAuth
-      sign-in needed, since we only read public channel info). The
-      <code>channels.list</code> calls this extension makes cost 1 unit each
-      (10,000/day free quota). Tip: restrict the key to the YouTube Data API v3.
-    </p>
 
     <script src="settings.js"></script>
     <script src="options.js"></script>

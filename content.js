@@ -193,15 +193,11 @@ function ensureBadge(owner) {
 // per-verdict visibility (M7).
 function verdictInfo(result) {
   if (result.flagged) {
-    const why =
-      result.reason === "new+volume"
-        ? "new channel, high upload volume"
-        : "high sustained publishing rate";
     return {
       kind: "flagged",
       icon: "⚠️",
       color: "#c62828",
-      summary: `Flagged: ${why} (publishing pattern, not AI detection)`,
+      summary: "Flagged: high sustained publishing rate (publishing pattern, not AI detection)",
     };
   }
   return {

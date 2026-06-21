@@ -9,8 +9,6 @@ const SETTINGS_KEY = "settings";
 // Defaults mirror the original hardcoded heuristic (M5) and "show every badge".
 const DEFAULT_SETTINGS = {
   ratioThreshold: 1.0, // suspicious sustained videos/day since creation
-  newAgeDays: 30, // "brand new" cutoff for the absolute rule (days)
-  newMinVideos: 50, // min videos for the new-channel rule
   scanFeed: false, // false = watch pages only; true = also scan feeds (M8)
   showFlagged: true, // ⚠️ suspicious publishing rate
   showLegit: true, // ✅ looks legit
@@ -37,7 +35,5 @@ async function getSettings() {
   }
   const merged = { ...DEFAULT_SETTINGS, ...stored };
   merged.ratioThreshold = positiveNumber(merged.ratioThreshold, DEFAULT_SETTINGS.ratioThreshold);
-  merged.newAgeDays = positiveNumber(merged.newAgeDays, DEFAULT_SETTINGS.newAgeDays);
-  merged.newMinVideos = positiveNumber(merged.newMinVideos, DEFAULT_SETTINGS.newMinVideos);
   return merged;
 }

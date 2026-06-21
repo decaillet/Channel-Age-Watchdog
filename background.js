@@ -91,15 +91,13 @@ function evaluate(facts, settings) {
   const { channelId, title, publishedAt, videoCount } = facts;
   const ageDays = (Date.now() - new Date(publishedAt).getTime()) / MS_PER_DAY;
   const ratio = ageDays > 0 ? videoCount / ageDays : Infinity;
-  const flaggedByRate = ratio > settings.ratioThreshold;
-  const flaggedByNew = ageDays < settings.newAgeDays && videoCount > settings.newMinVideos;
-  const flagged = flaggedByRate || flaggedByNew;
+  const flagged = ratio > settings.ratioThreshold;
 
   return {
     ok: true,
     found: true,
     flagged,
-    reason: flaggedByNew ? "new+volume" : flaggedByRate ? "rate" : null,
+    reason: flagged ? "rate" : null,
     channelId,
     title,
     publishedAt,
@@ -108,8 +106,6 @@ function evaluate(facts, settings) {
     ratio: Number.isFinite(ratio) ? ratio : null,
     thresholds: {
       ratio: settings.ratioThreshold,
-      newAgeDays: settings.newAgeDays,
-      newMinVideos: settings.newMinVideos,
     },
   };
 }

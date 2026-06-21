@@ -71,8 +71,6 @@ const settingsForm = document.getElementById("settingsForm");
 const settingsStatus = document.getElementById("settingsStatus");
 const fields = {
   ratioThreshold: document.getElementById("ratioThreshold"),
-  newAgeDays: document.getElementById("newAgeDays"),
-  newMinVideos: document.getElementById("newMinVideos"),
   scanFeed: document.getElementById("scanFeed"),
   showFlagged: document.getElementById("showFlagged"),
   showLegit: document.getElementById("showLegit"),
@@ -83,8 +81,6 @@ const BOOLEAN_FIELDS = ["scanFeed", "showFlagged", "showLegit", "showNeutral"];
 // Populate the form from a settings object (defaults merged with stored values).
 function fillSettingsForm(settings) {
   fields.ratioThreshold.value = settings.ratioThreshold;
-  fields.newAgeDays.value = settings.newAgeDays;
-  fields.newMinVideos.value = settings.newMinVideos;
   for (const key of BOOLEAN_FIELDS) fields[key].checked = settings[key];
 }
 
@@ -99,17 +95,13 @@ async function loadSettings() {
 async function saveSettings(event) {
   event.preventDefault();
 
-  const numbers = {};
-  for (const key of ["ratioThreshold", "newAgeDays", "newMinVideos"]) {
-    const value = Number(fields[key].value);
-    if (!Number.isFinite(value) || value <= 0) {
-      showStatus(settingsStatus, "Thresholds must be positive numbers.", "err");
-      return;
-    }
-    numbers[key] = value;
+  const ratioThreshold = Number(fields.ratioThreshold.value);
+  if (!Number.isFinite(ratioThreshold) || ratioThreshold <= 0) {
+    showStatus(settingsStatus, "Threshold must be a positive number.", "err");
+    return;
   }
 
-  const settings = { ...numbers };
+  const settings = { ratioThreshold };
   for (const key of BOOLEAN_FIELDS) settings[key] = fields[key].checked;
 
   try {
