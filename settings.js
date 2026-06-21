@@ -8,7 +8,7 @@ const SETTINGS_KEY = "settings";
 
 // Defaults mirror the original hardcoded heuristic (M5) and "show every badge".
 const DEFAULT_SETTINGS = {
-  ratioThreshold: 1.0, // suspicious sustained videos/day since creation
+  ratioThreshold: 0.05, // suspicious sustained videos/day since creation (1 video / 20 days)
   // M10: engagement floors. A channel is flagged only when its publishing rate is high
   // AND both of these per-video averages fall below their threshold (logical AND). Both
   // are cumulative-lifetime metrics, so they favour older channels; defaults are tunable

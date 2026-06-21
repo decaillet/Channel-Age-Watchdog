@@ -145,6 +145,29 @@ function detectChannel() {
   return parseChannelHref(link.getAttribute("href"));
 }
 
+// Anchors the main badge inside the channel name/title for whichever page we're on.
+// On channel pages YouTube has used several header layouts over time, so we try them
+// in order. The element can load after navigation; callers retry until it appears.
+const CHANNEL_HEADER_SELECTORS = [
+  "ytd-c4-tabbed-header-renderer #channel-name", // older channel header
+  "yt-page-header-renderer h1", // current channel header title
+  "ytd-page-header-renderer h1",
+  "#page-header h1",
+];
+
+// The element the main badge attaches to: the owner renderer on /watch, the channel
+// header on a channel page. Returns null when neither is present (yet).
+function getBadgeOwner() {
+  if (location.pathname === "/watch") {
+    return document.querySelector("ytd-video-owner-renderer #channel-name");
+  }
+  for (const selector of CHANNEL_HEADER_SELECTORS) {
+    const el = document.querySelector(selector);
+    if (el) return el;
+  }
+  return null;
+}
+
 // Render a channel age for humans: days while a channel is young (the case that
 // matters for the heuristic), then months, then years as it gets older.
 function formatAge(days) {
@@ -225,7 +248,7 @@ function verdictInfo(result) {
 // ✅ (green) when it looks legit. Inserted next to the channel name; clicking it opens
 // the detail popup (M7) with the full breakdown.
 function showBadge(result) {
-  const owner = document.querySelector("ytd-video-owner-renderer #channel-name");
+  const owner = getBadgeOwner();
   if (!owner) return;
 
   const verdict = verdictInfo(result);
@@ -261,7 +284,7 @@ function neutralMessage(result) {
 // Show a neutral (grey) badge when there's no verdict to give: missing key, API
 // error, unsupported channel, or not found. Keeps a badge present at all times.
 function showNeutralBadge(result) {
-  const owner = document.querySelector("ytd-video-owner-renderer #channel-name");
+  const owner = getBadgeOwner();
   if (!owner) return;
 
   const message = neutralMessage(result);
@@ -487,17 +510,37 @@ async function evaluateChannel(channel, key) {
   const source = result?.cached ? (result.stale ? "cache (stale fallback)" : "cache") : "API";
   console.log(`Watchdog [${source}]`, key, result);
 
+  paintBadge(result, key);
+}
+
+// Render the badge for a completed lookup, honouring per-verdict visibility (M7). The
+// channel header on a channel page can mount after the lookup resolves (which is often
+// instant from cache), so when we intend to show a badge but the owner isn't there yet
+// we retry until it appears. Bails if the user has navigated to another channel.
+function paintBadge(result, key, attempt = 0) {
+  if (key !== currentChannelKey) return; // navigated away mid-lookup
+
+  let action = "remove"; // hidden verdict, or no verdict and ❔ disabled
   if (result && result.ok && result.found) {
-    // ✅ legit or ⚠️ flagged — show the numbers, unless that verdict is hidden (M7).
+    // ✅ legit / 🛡️ trusted follow the legit toggle; ⚠️ flagged follows its own (M7).
     const { kind } = verdictInfo(result);
     const visible = kind === "flagged" ? currentSettings.showFlagged : currentSettings.showLegit;
-    if (visible) showBadge(result);
-    else removeBadge();
+    if (visible) action = "verdict";
   } else if (currentSettings.showNeutral) {
-    showNeutralBadge(result); // ❔ no key, API error, unsupported, or not found
-  } else {
-    removeBadge();
+    action = "neutral"; // ❔ no key, API error, unsupported, or not found
   }
+
+  if (action === "remove") {
+    removeBadge();
+    return;
+  }
+
+  if (!getBadgeOwner()) {
+    if (attempt < 20) setTimeout(() => paintBadge(result, key, attempt + 1), 250);
+    return;
+  }
+  if (action === "verdict") showBadge(result);
+  else showNeutralBadge(result);
 }
 
 // Detect the current channel and, when it changes, kick off an evaluation. YouTube
@@ -505,15 +548,28 @@ async function evaluateChannel(channel, key) {
 // so this runs both on navigation and on every relevant owner mutation; the
 // currentChannelKey guard keeps it to one evaluation per channel.
 function syncBadge() {
-  if (location.pathname !== "/watch") {
+  if (location.pathname === "/watch") {
+    const channel = detectChannel();
+    if (!channel) return; // owner link not ready yet — keep waiting, retry on mutation
+    startEvaluation(channel);
+    return;
+  }
+
+  // Channel pages (/@handle, /channel/UC…, /c/…, /user/…) get the same badge, keyed off
+  // the URL (the channel is the page itself). Everything else (home, search, feeds) has
+  // no main badge.
+  const channel = parseChannelHref(location.pathname);
+  if (!channel) {
     currentChannelKey = null;
     removeBadge();
     return;
   }
+  startEvaluation(channel);
+}
 
-  const channel = detectChannel();
-  if (!channel) return;
-
+// Begin evaluating a detected channel, unless it's the one already showing (avoids a
+// redundant API call and the observer feedback loop our own badge writes would cause).
+function startEvaluation(channel) {
   const key = `${channel.kind}:${channel.value}`;
   if (key === currentChannelKey) return;
   currentChannelKey = key;
@@ -564,9 +620,10 @@ function ensureObserver() {
 }
 
 // --- M8 — Feed / thumbnail scanning -------------------------------------------
-// Opt-in (Options → "Also scan feed…"). Overlays a small corner badge on the
-// thumbnails of *flagged* channels across the homepage, search, subscriptions and
-// the watch-page sidebar. Two safeguards keep this from burning API quota:
+// Opt-in (Options → "Also scan feed…"). Overlays a small corner badge on feed
+// thumbnails across the homepage, search, subscriptions and the watch-page sidebar,
+// honouring the per-verdict visibility toggles (flagged-only unless "show legit" is
+// on — see applyFeedResult). Two safeguards keep this from burning API quota:
 //   - an IntersectionObserver, so only thumbnails actually scrolled into view are
 //     ever looked up (off-screen items in a long feed cost nothing);
 //   - a rate-limited queue (one dispatch per FEED_DISPATCH_MS, max FEED_MAX_INFLIGHT
@@ -680,11 +737,16 @@ async function dispatchFeedLookup(key, channel) {
   if (feedQueue.length > 0) scheduleFeedTick(); // a slot freed up
 }
 
-// Feed badges are deliberately flagged-only: overlaying every legit thumbnail would
-// be noise. Honour the same ⚠️ visibility toggle the watch badge uses.
+// Badge a feed thumbnail, honouring the same per-verdict visibility toggles as the
+// watch badge (M7): ⚠️ flagged follows showFlagged; ✅ legit / 🛡️ trusted follow
+// showLegit. So when "show legit" is on, green badges appear on feed thumbnails too;
+// turn it off in Options to keep feeds flagged-only.
 function applyFeedResult(el, result) {
-  if (!currentSettings.scanFeed || !currentSettings.showFlagged) return;
-  if (!(result.ok && result.found && result.flagged)) return;
+  if (!currentSettings.scanFeed) return;
+  if (!(result.ok && result.found)) return;
+  const { kind } = verdictInfo(result);
+  const visible = kind === "flagged" ? currentSettings.showFlagged : currentSettings.showLegit;
+  if (!visible) return;
   addFeedBadge(el, result);
 }
 
@@ -696,10 +758,11 @@ function addFeedBadge(el, result) {
   const thumb = el.querySelector("a#thumbnail") || el;
   if (getComputedStyle(thumb).position === "static") thumb.style.position = "relative";
 
+  const verdict = verdictInfo(result);
   const badge = document.createElement("span");
   badge.className = FEED_BADGE_CLASS;
   badge._result = result;
-  badge.textContent = `⚠️ ${result.videoCount} in ${formatAge(result.ageDays)}`;
+  badge.textContent = `${verdict.icon} ${result.videoCount} in ${formatAge(result.ageDays)}`;
   Object.assign(badge.style, {
     position: "absolute",
     top: "4px",
@@ -707,7 +770,7 @@ function addFeedBadge(el, result) {
     zIndex: "100",
     padding: "2px 6px",
     borderRadius: "8px",
-    background: "rgba(198, 40, 40, 0.95)",
+    background: verdict.color,
     color: "#fff",
     fontSize: "11px",
     fontWeight: "700",

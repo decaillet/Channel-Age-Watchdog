@@ -26,7 +26,7 @@ you can make your own call rather than trusting a verdict.
 
 ```
 ratio = video_count / channel_age_in_days
-flagged if ratio > ratioThreshold   (default: 1.0, i.e. > ~1 video/day sustained)
+flagged if ratio > ratioThreshold   (default: 0.05, i.e. > 1 video / 20 days sustained)
 ```
 
 The threshold is configurable in Options. Lowering it flags more channels; the verdict is
