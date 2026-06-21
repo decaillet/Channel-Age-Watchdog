@@ -102,14 +102,41 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
     feed scan, no quota-counter per M11 rationale).
   - "Not AI detection" callout up top + Non-goals; also added Options/Privacy.
 
-## M10 — Better heuristic (co-design)
-- [ ] Co-design a stronger signal than the single `videos/day` ratio. The naive ratio
-      over-flags old prolific channels and under-flags slow-drip slop; the dropped
-      "new-channel" rule was too blunt to keep.
-- [ ] Ideas to explore together: recent upload velocity (last N days vs lifetime),
-      upload regularity/burstiness, account age vs upload-start gap, per-category
-      norms. Decide what the YouTube Data API can actually supply within quota.
-- **Demo:** TBD once the heuristic is agreed.
+## M10 — Better heuristic: three-conditions AND
+Flag a channel as suspicious ONLY when all three hold at once (logical AND):
+  1. videos/day high       — existing `ratio = videoCount / ageDays > ratioThreshold` (unchanged)
+  2. views per video low   — `viewCount / videoCount < maxViewsPerVideo`
+  3. subs per video low    — `subscriberCount / videoCount < maxSubsPerVideo`
+
+Rationale: the lone videos/day ratio over-flags old prolific legit channels. AND-ing an
+engagement floor lets those channels escape while still catching high-volume, low-engagement
+slop. `viewCount`/`subscriberCount` already come back in the `part=statistics` response, so
+this adds zero quota.
+
+- [ ] `settings.js`: add `maxViewsPerVideo` + `maxSubsPerVideo` defaults; sanitize via
+      `positiveNumber()`; keep `ratioThreshold`.
+- [ ] `background.js` `evaluate()`: read views/subs, compute the two per-video metrics, AND
+      the three conditions. Guard `videoCount === 0` and hidden subscriber counts.
+- [ ] `background.js` cache: store `viewCount`/`subscriberCount`/`hiddenSubscriberCount` in
+      `facts` so the verdict recomputes on cached entries (old entries backfill on next
+      7-day refresh).
+- [ ] Options: two new threshold inputs (views/video, subs/video) + labels.
+- [ ] Badge detail popup: show views/video and subs/video next to the ratio.
+
+Design notes / open questions:
+  - Does NOT address the slow-drip slop under-flag: condition 1 is still the gate, and AND
+    only narrows flagging. This iteration targets false positives, not coverage.
+  - Conditions 2 and 3 are strongly correlated (subs track views); 3 rarely flips the
+    verdict. Keep both for now; consider collapsing into one engagement floor later.
+  - Both metrics are lifetime-cumulative → favour age. New slop has "low" views/subs for
+    innocent reasons; old channels clear the floor by accumulation. Thresholds need care.
+  - Hidden subscriber count → condition 3 unknown. Default: treat as not-met (don't flag,
+    no false positive). Decide later whether to drop condition 3 in that case.
+  - "Low" thresholds are niche/language/region dependent. Ship tunable, revisit defaults.
+
+- **Demo:** TBD — pick a known slop channel and a known old-prolific-legit channel; lower
+  the videos/day threshold so both trip condition 1, then confirm only the slop one flags
+  once the engagement floors are in.
 
 ## M11 — API key status in Options (no quota counter)
 - [x] Show key state in Options: not set / set / "Test key" button that does one witness
