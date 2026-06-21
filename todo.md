@@ -60,9 +60,18 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   - Threshold recomputes from cached facts, so lowering it re-flags on next visit
     with no API call. Watch-only vs feed toggle is stored now; honored in M8.
 
-## M8 — (Later pass) Feed / thumbnail scanning
-- [ ] Opt-in, debounced + rate-limited badges on feed/search/recommendation thumbnails
+## M8 — Feed / thumbnail scanning
+- [~] Opt-in, debounced + rate-limited badges on feed/search/recommendation thumbnails
 - **Demo:** enable in Options → scroll homepage → flagged thumbnails get a corner badge, no API burst.
+- Code complete; awaiting Firefox demo. Notes:
+  - Gated on the existing `scanFeed` option; applies on the next navigation.
+  - `IntersectionObserver` looks up only thumbnails scrolled into view; a debounced
+    `MutationObserver` picks up infinite-scroll content.
+  - Rate-limited queue: one dispatch per 350 ms, max 2 in flight, per-session dedupe.
+    The background cache (M6) absorbs repeats across sessions, so no API burst.
+  - Flagged-only corner badge (⚠️), honouring the `showFlagged` toggle; reuses the
+    shared M7 detail popup on click. Covers home, search, subscriptions, and the
+    watch-page sidebar (`ytd-rich-item`/`video`/`compact-video`/`grid-video`).
 
 ## M9 — README / docs polish
 - [ ] How to get a YouTube Data API key
@@ -77,6 +86,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
       upload regularity/burstiness, account age vs upload-start gap, per-category
       norms. Decide what the YouTube Data API can actually supply within quota.
 - **Demo:** TBD once the heuristic is agreed.
+
+## M11 — API key status in Options (no quota counter)
+- [ ] Show key state in Options: not set / set / "Test key" button that does one witness
+      `channels.list` call and reports ✅ valid · ❌ invalid · quota exceeded.
+- **Demo:** paste a bad key → "Test key" shows invalid; paste a good one → valid.
+- Note: do NOT build a "requests remaining" counter. The YouTube Data API does not
+  expose remaining quota (only the Cloud Console does), so it could only be a local
+  estimate that drifts. Quota is 10,000 units/day, resets daily at midnight PT, and
+  with the M6 7-day cache (1 unit per channel per week) the cap is effectively
+  unreachable in normal use — there is nothing to "pay" or re-key for.
 
 ---
 

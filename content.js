@@ -112,17 +112,13 @@ async function maybeShowKeyNotice() {
   document.body.appendChild(notice);
 }
 
-// Pull the channel identity out of the owner renderer's link. YouTube uses
-// either a handle URL (/@SomeHandle) or a canonical channel URL (/channel/UC…),
-// and occasionally legacy /c/ or /user/ vanity paths. Return whichever we find.
-function detectChannel() {
-  const link = document.querySelector(
-    "ytd-video-owner-renderer #channel-name a, ytd-video-owner-renderer a.yt-simple-endpoint"
-  );
-  if (!link) return null;
-
-  const href = link.getAttribute("href") || "";
-  const path = href.replace(/^https?:\/\/[^/]+/, ""); // strip origin if absolute
+// Parse a channel identity out of an href. YouTube uses either a handle URL
+// (/@SomeHandle) or a canonical channel URL (/channel/UC…), and occasionally legacy
+// /c/ or /user/ vanity paths. Returns the first match, or null for anything else
+// (notably /watch links, which lets the feed scanner ignore the video link itself).
+// Shared by the watch-page detector and the M8 feed scanner.
+function parseChannelHref(href) {
+  const path = (href || "").replace(/^https?:\/\/[^/]+/, ""); // strip origin if absolute
 
   let match;
   if ((match = path.match(/^\/(@[^/?#]+)/))) {
@@ -138,6 +134,15 @@ function detectChannel() {
     return { kind: "vanity", value: match[1] };
   }
   return null;
+}
+
+// Pull the channel identity out of the watch page's owner renderer link.
+function detectChannel() {
+  const link = document.querySelector(
+    "ytd-video-owner-renderer #channel-name a, ytd-video-owner-renderer a.yt-simple-endpoint"
+  );
+  if (!link) return null;
+  return parseChannelHref(link.getAttribute("href"));
 }
 
 // Render a channel age for humans: days while a channel is young (the case that
@@ -482,6 +487,238 @@ function ensureObserver() {
   return true;
 }
 
+// --- M8 — Feed / thumbnail scanning -------------------------------------------
+// Opt-in (Options → "Also scan feed…"). Overlays a small corner badge on the
+// thumbnails of *flagged* channels across the homepage, search, subscriptions and
+// the watch-page sidebar. Two safeguards keep this from burning API quota:
+//   - an IntersectionObserver, so only thumbnails actually scrolled into view are
+//     ever looked up (off-screen items in a long feed cost nothing);
+//   - a rate-limited queue (one dispatch per FEED_DISPATCH_MS, max FEED_MAX_INFLIGHT
+//     in flight) plus per-session dedupe, so a feed of many channels never fires an
+//     API burst. The background cache absorbs repeats across sessions.
+const FEED_BADGE_CLASS = "caw-feed-badge";
+
+// Renderer elements that wrap a single feed/search/recommendation video.
+const THUMB_SELECTOR = [
+  "ytd-rich-item-renderer", // homepage / subscriptions grid
+  "ytd-video-renderer", // search results
+  "ytd-compact-video-renderer", // watch-page sidebar recommendations
+  "ytd-grid-video-renderer", // channel pages / legacy grids
+].join(",");
+
+const FEED_MAX_INFLIGHT = 2; // concurrent lookups
+const FEED_DISPATCH_MS = 350; // min gap between dispatches
+
+const observedThumbs = new WeakSet(); // renderers already handed to the IO
+const feedResultCache = new Map(); // channelKey -> result (this page session)
+const pendingElements = new Map(); // channelKey -> Set<renderer> awaiting a result
+const feedQueue = []; // channelKeys waiting to be dispatched
+const feedQueued = new Map(); // channelKey -> channel (dedupe queue membership)
+const feedInflight = new Set(); // channelKeys currently being looked up
+
+let feedIO = null;
+let feedMutationObserver = null;
+let feedScanDebounce = null;
+let feedTimer = null;
+
+// Find the channel a thumbnail belongs to: the first link in the renderer that
+// resolves to a channel (the byline/avatar). The /watch video link never matches.
+function detectChannelIn(root) {
+  for (const a of root.querySelectorAll("a[href]")) {
+    const channel = parseChannelHref(a.getAttribute("href"));
+    if (channel) return channel;
+  }
+  return null;
+}
+
+// A thumbnail entered the viewport: resolve its channel and ensure a lookup. Cached
+// results apply immediately; otherwise the renderer waits on the throttled queue.
+function onThumbVisible(el) {
+  if (!currentSettings.scanFeed) return;
+  if (el.querySelector(`.${FEED_BADGE_CLASS}`)) return; // already badged
+
+  const channel = detectChannelIn(el);
+  // Vanity /c/ paths have no channels.list selector, so a lookup could never flag
+  // them — skip rather than waste a throttle slot.
+  if (!channel || channel.kind === "vanity") return;
+
+  const key = `${channel.kind}:${channel.value}`;
+  if (feedResultCache.has(key)) {
+    applyFeedResult(el, feedResultCache.get(key));
+    return;
+  }
+
+  let waiting = pendingElements.get(key);
+  if (!waiting) {
+    waiting = new Set();
+    pendingElements.set(key, waiting);
+  }
+  waiting.add(el);
+
+  if (!feedQueued.has(key) && !feedInflight.has(key)) {
+    feedQueued.set(key, channel);
+    feedQueue.push(key);
+    scheduleFeedTick();
+  }
+}
+
+// Throttle: at most one dispatch per FEED_DISPATCH_MS, capped at FEED_MAX_INFLIGHT.
+function scheduleFeedTick() {
+  if (feedTimer) return;
+  feedTimer = setTimeout(() => {
+    feedTimer = null;
+    feedTick();
+  }, FEED_DISPATCH_MS);
+}
+
+function feedTick() {
+  if (feedInflight.size < FEED_MAX_INFLIGHT && feedQueue.length > 0) {
+    const key = feedQueue.shift();
+    const channel = feedQueued.get(key);
+    feedQueued.delete(key);
+    feedInflight.add(key);
+    dispatchFeedLookup(key, channel);
+  }
+  if (feedQueue.length > 0) scheduleFeedTick();
+}
+
+// Ask the background page to evaluate one channel, then badge every visible
+// thumbnail that was waiting on it. Errors degrade to "no badge", never break the page.
+async function dispatchFeedLookup(key, channel) {
+  let result = null;
+  try {
+    result = await browser.runtime.sendMessage({ type: "lookupChannel", channel });
+  } catch {
+    // background unavailable — leave the thumbnail unbadged
+  }
+  feedInflight.delete(key);
+
+  if (result) {
+    feedResultCache.set(key, result);
+    const waiting = pendingElements.get(key);
+    if (waiting) {
+      for (const el of waiting) applyFeedResult(el, result);
+      pendingElements.delete(key);
+    }
+  }
+  if (feedQueue.length > 0) scheduleFeedTick(); // a slot freed up
+}
+
+// Feed badges are deliberately flagged-only: overlaying every legit thumbnail would
+// be noise. Honour the same ⚠️ visibility toggle the watch badge uses.
+function applyFeedResult(el, result) {
+  if (!currentSettings.scanFeed || !currentSettings.showFlagged) return;
+  if (!(result.ok && result.found && result.flagged)) return;
+  addFeedBadge(el, result);
+}
+
+// Overlay a small corner badge on the thumbnail. Clicking it opens the shared detail
+// popup (anchored to the badge) instead of following the thumbnail link.
+function addFeedBadge(el, result) {
+  if (el.querySelector(`.${FEED_BADGE_CLASS}`)) return;
+
+  const thumb = el.querySelector("a#thumbnail") || el;
+  if (getComputedStyle(thumb).position === "static") thumb.style.position = "relative";
+
+  const badge = document.createElement("span");
+  badge.className = FEED_BADGE_CLASS;
+  badge._result = result;
+  badge.textContent = `⚠️ ${result.videoCount} in ${formatAge(result.ageDays)}`;
+  Object.assign(badge.style, {
+    position: "absolute",
+    top: "4px",
+    left: "4px",
+    zIndex: "100",
+    padding: "2px 6px",
+    borderRadius: "8px",
+    background: "rgba(198, 40, 40, 0.95)",
+    color: "#fff",
+    fontSize: "11px",
+    fontWeight: "700",
+    lineHeight: "1.3",
+    whiteSpace: "nowrap",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    boxShadow: "0 1px 4px rgba(0, 0, 0, 0.4)",
+    cursor: "pointer",
+    pointerEvents: "auto",
+  });
+  badge.title = `Channel Age Watchdog — ${result.title}\nClick for details`;
+  badge.addEventListener("click", (event) => {
+    event.preventDefault(); // don't navigate to the video
+    event.stopPropagation();
+    toggleDetailPopup(badge);
+  });
+  thumb.appendChild(badge);
+}
+
+// Hand any not-yet-observed thumbnail renderers to the IntersectionObserver. Cheap to
+// re-run (the WeakSet skips known elements), so it's safe to call on every mutation.
+function scanForThumbnails() {
+  if (!currentSettings.scanFeed) return;
+  if (!feedIO) {
+    feedIO = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) onThumbVisible(entry.target);
+        }
+      },
+      { rootMargin: "100px" } // start a touch before they're fully on-screen
+    );
+  }
+  for (const el of document.querySelectorAll(THUMB_SELECTOR)) {
+    if (observedThumbs.has(el)) continue;
+    observedThumbs.add(el);
+    feedIO.observe(el);
+  }
+}
+
+// Infinite scroll keeps appending renderers, so watch the DOM and re-scan (debounced)
+// to observe the new ones. The debounce keeps YouTube's chatty mutations bounded.
+function ensureFeedMutationObserver() {
+  if (feedMutationObserver) return;
+  feedMutationObserver = new MutationObserver(() => {
+    if (feedScanDebounce) return;
+    feedScanDebounce = setTimeout(() => {
+      feedScanDebounce = null;
+      scanForThumbnails();
+    }, 400);
+  });
+  feedMutationObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// Tear everything down when scanning is off: stop observing, drop pending work, and
+// remove any badges we placed. Lets a navigation after disabling the option clean up.
+function teardownFeedScanning() {
+  if (feedIO) {
+    feedIO.disconnect();
+    feedIO = null;
+  }
+  if (feedMutationObserver) {
+    feedMutationObserver.disconnect();
+    feedMutationObserver = null;
+  }
+  if (feedTimer) {
+    clearTimeout(feedTimer);
+    feedTimer = null;
+  }
+  feedQueue.length = 0;
+  feedQueued.clear();
+  pendingElements.clear();
+  document.querySelectorAll(`.${FEED_BADGE_CLASS}`).forEach((b) => b.remove());
+}
+
+// Reload settings, then start or stop feed scanning to match. Called on each
+// navigation so toggling the option in Options takes effect on the next page.
+async function refreshFeedScanning() {
+  currentSettings = await getSettings();
+  if (currentSettings.scanFeed) {
+    ensureFeedMutationObserver();
+    scanForThumbnails();
+  } else {
+    teardownFeedScanning();
+  }
+}
+
 // On navigation the owner element may not exist yet (and the badge may show the
 // previous video's channel until YouTube updates the link). Retry until the
 // owner is present and the observer is attached; the observer then keeps the
@@ -490,6 +727,7 @@ function onNavigate(attempt = 0) {
   const ready = ensureObserver();
   syncBadge();
   maybeShowKeyNotice();
+  refreshFeedScanning();
   if (!ready && location.pathname === "/watch" && attempt < 20) {
     setTimeout(() => onNavigate(attempt + 1), 250);
   }
