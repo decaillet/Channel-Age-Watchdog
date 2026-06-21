@@ -31,8 +31,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** badge shows the actual channel handle/ID across several videos.
 
 ## M4 — Options page + API key storage
-- [ ] `options.html` + `options.js` (save key to `browser.storage.local`)
-- [ ] One-time notice + link when no key is set
+- [x] `options.html` + `options.js` (save key to `browser.storage.local`)
+- [x] One-time notice + link when no key is set
 - **Demo:** save a key in Options, reload Firefox → key persists.
 
 ## M5 — Real API call + heuristic + real badge

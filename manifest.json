@@ -13,6 +13,14 @@
     "48": "icons/icon.svg",
     "96": "icons/icon.svg"
   },
+  "permissions": ["storage"],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
