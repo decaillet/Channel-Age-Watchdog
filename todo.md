@@ -160,6 +160,34 @@ Design notes / open questions:
   with the M6 7-day cache (1 unit per channel per week) the cap is effectively
   unreachable in normal use — there is nothing to "pay" or re-key for.
 
+## M12 — Package & lint (local, no Mozilla account)
+- [x] Adopt `web-ext` as a dev dependency (`package.json`, scripts: `lint`/`build`/`sign`).
+- [x] `npm run lint` clean: 0 errors, 0 warnings (one forward-looking notice only —
+      `data_collection_permissions`, see below).
+- [x] `npm run build` → reproducible zip in `web-ext-artifacts/`, dev files excluded
+      (`node_modules`, `package.json`, `*.md`, `.gitignore` ignored via `--ignore-files`).
+- **Demo:** load `web-ext-artifacts/channel_age_watchdog-0.1.0.zip` as a temp add-on →
+  works; `npm run lint` passes. (Awaiting Firefox test.)
+- Notes:
+  - SVG manifest icon passes lint; no PNG conversion needed for now.
+  - Lint notice: Mozilla will eventually require `data_collection_permissions` in the
+    manifest. Non-blocking for unlisted signing. Relevant because channel IDs are sent
+    to Google's API. Decide on the declaration (likely `none` for developer collection,
+    since there is no backend) before it becomes mandatory.
+
+## M13 — Sign for self-distribution (unlisted .xpi)
+- [ ] User: create an AMO account at https://addons.mozilla.org/developers/
+- [ ] User: generate API credentials (JWT issuer + secret) at
+      https://addons.mozilla.org/developers/addon/api/key/
+- [ ] Run `npm run sign -- --api-key=<issuer> --api-secret=<secret>` →
+      Mozilla-signed `.xpi` in `web-ext-artifacts/`.
+- [ ] Install the signed `.xpi` in normal Firefox; confirm it survives a restart.
+- **Demo:** install the signed `.xpi`, restart Firefox → extension still present and working.
+- Notes:
+  - `--channel=unlisted` = signed for self-distribution, not listed on AMO, no public
+    review. The API secret is the user's; the user runs the sign command.
+  - Unlisted self-distribution has no auto-update unless an `update_url` is added later.
+
 ---
 
 ## Non-goals (do not build)

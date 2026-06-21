@@ -1,0 +1,15 @@
+{
+  "name": "channel-age-watchdog",
+  "version": "0.1.0",
+  "description": "Firefox extension flagging YouTube channels with a suspicious publishing rate. Not AI detection.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "web-ext lint --source-dir . --ignore-files 'package.json' 'package-lock.json' 'node_modules' '*.md' '.gitignore'",
+    "build": "web-ext build --source-dir . --overwrite-dest --ignore-files 'package.json' 'package-lock.json' 'node_modules' '*.md' '.gitignore'",
+    "sign": "web-ext sign --source-dir . --channel=unlisted --ignore-files 'package.json' 'package-lock.json' 'node_modules' '*.md' '.gitignore'"
+  },
+  "devDependencies": {
+    "web-ext": "^8.3.0"
+  }
+}
