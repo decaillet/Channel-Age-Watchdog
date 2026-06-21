@@ -50,6 +50,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ## M7 — Badge detail popup + configurable thresholds
 - [ ] Click badge → popup with channel age, video count, ratio
 - [ ] Options: ratio threshold, new-channel thresholds, watch-only vs feed toggle
+- [ ] Options: per-verdict badge visibility — let the user disable individual badges
+      (notably hide the green ✅ "legit" badge), keeping ⚠️ flagged / ❔ neutral
 - **Demo:** lower the threshold → a previously-unflagged channel now flags.
 
 ## M8 — (Later pass) Feed / thumbnail scanning
