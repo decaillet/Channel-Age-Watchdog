@@ -8,6 +8,8 @@ const form = document.getElementById("form");
 const input = document.getElementById("apiKey");
 const reveal = document.getElementById("reveal");
 const status = document.getElementById("status");
+const keyState = document.getElementById("keyState");
+const testKeyButton = document.getElementById("testKey");
 
 // Transient "Saved." / error feedback below a form. Each status element keeps its own
 // auto-clear timer so the key form and the settings form don't clobber each other.
@@ -29,11 +31,18 @@ function showStatus(el, message, kind) {
   }
 }
 
+// M11: reflect whether a key is currently saved. This tracks the stored key, not the
+// (possibly unsaved) input value, so it answers "is a key in effect right now?".
+function renderKeyState(hasKey) {
+  keyState.textContent = hasKey ? "A key is saved." : "No key saved.";
+}
+
 // Prefill the field with any previously saved key.
 async function load() {
   try {
     const stored = await browser.storage.local.get(STORAGE_KEY);
     if (stored[STORAGE_KEY]) input.value = stored[STORAGE_KEY];
+    renderKeyState(Boolean(stored[STORAGE_KEY]));
   } catch (err) {
     showStatus(status, `Could not read stored key: ${err.message}`, "err");
   }
@@ -53,8 +62,47 @@ async function save(event) {
       await browser.storage.local.remove(STORAGE_KEY);
       showStatus(status, "Key cleared.", "ok");
     }
+    renderKeyState(Boolean(key));
   } catch (err) {
     showStatus(status, `Could not save key: ${err.message}`, "err");
+  }
+}
+
+// M11: validate the key currently in the field with one witness API call, so the user
+// can confirm a freshly-pasted key before relying on it (and without saving first).
+// The network call lives in the background page; we only render its verdict here.
+const TEST_RESULTS = {
+  valid: { message: "Key is valid.", kind: "ok" },
+  quota: {
+    message: "Key is valid, but today's quota is exhausted. It resets at midnight Pacific.",
+    kind: "err",
+  },
+  network: { message: "Could not reach Google. Check your connection and try again.", kind: "err" },
+};
+
+async function testKey() {
+  const key = input.value.trim();
+  if (!key) {
+    showStatus(status, "Enter a key to test.", "err");
+    return;
+  }
+
+  testKeyButton.disabled = true;
+  showStatus(status, "Testing key…", "");
+  try {
+    const result = await browser.runtime.sendMessage({ type: "testApiKey", key });
+    const known = result && TEST_RESULTS[result.state];
+    if (known) {
+      showStatus(status, known.message, known.kind);
+    } else {
+      // "invalid" (and any unexpected state): surface the API's own explanation.
+      const detail = result && result.message ? ` (${result.message})` : "";
+      showStatus(status, `Key was rejected${detail}.`, "err");
+    }
+  } catch (err) {
+    showStatus(status, `Could not test key: ${err.message}`, "err");
+  } finally {
+    testKeyButton.disabled = false;
   }
 }
 
@@ -63,6 +111,7 @@ reveal.addEventListener("change", () => {
 });
 
 form.addEventListener("submit", save);
+testKeyButton.addEventListener("click", testKey);
 load();
 
 // --- Detection settings (M7) ---------------------------------------------------

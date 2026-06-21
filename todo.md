@@ -112,9 +112,21 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** TBD once the heuristic is agreed.
 
 ## M11 — API key status in Options (no quota counter)
-- [ ] Show key state in Options: not set / set / "Test key" button that does one witness
+- [x] Show key state in Options: not set / set / "Test key" button that does one witness
       `channels.list` call and reports ✅ valid · ❌ invalid · quota exceeded.
 - **Demo:** paste a bad key → "Test key" shows invalid; paste a good one → valid.
+- Done — demoed in Firefox.
+- Implemented:
+  - `keyState` line under the key form reflects the *saved* key (not the unsaved input):
+    "A key is saved." / "No key saved." Updated on load and after every save/clear.
+  - "Test key" button validates the key currently in the field (so a freshly-pasted
+    key can be checked before saving). Background runs one witness `channels.list`
+    call (`part=id` against a stable channel id, 1 unit) via a new `testApiKey`
+    message; the page only renders the verdict, so the network call stays in the
+    background page.
+  - Verdict mapping: `ok` → valid · 403 quotaExceeded/dailyLimit/rateLimit → quota
+    ("valid but quota exhausted") · anything else → invalid, surfacing the API's own
+    error message (covers bad key, API-not-enabled, etc.) · fetch failure → network.
 - Note: do NOT build a "requests remaining" counter. The YouTube Data API does not
   expose remaining quota (only the Cloud Console does), so it could only be a local
   estimate that drifts. Quota is 10,000 units/day, resets daily at midnight PT, and

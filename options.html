@@ -105,6 +105,11 @@
         min-height: 1.25rem;
         font-size: 0.9rem;
       }
+      #keyState {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #666;
+      }
       .ok {
         color: #2e7d32;
       }
@@ -170,10 +175,12 @@
       />
       <div class="row">
         <button type="submit">Save</button>
+        <button type="button" id="testKey">Test key</button>
         <label style="font-weight: 400; margin: 0">
           <input type="checkbox" id="reveal" /> Show key
         </label>
       </div>
+      <div id="keyState" class="label-hint"></div>
       <div id="status" role="status" aria-live="polite"></div>
     </form>
 

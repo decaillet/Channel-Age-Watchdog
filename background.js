@@ -200,6 +200,52 @@ async function lookupChannel(channel) {
   return evaluate(facts, settings, trusted);
 }
 
+// M11: validate a key with a single witness channels.list call (1 unit, same cost as
+// a normal lookup). We only care whether the request is accepted, so we ask for the
+// cheapest part and filter by a stable, well-known channel id — the response body is
+// irrelevant. Returns a small status the Options page can render. Never throws.
+//   valid   — the key works
+//   quota   — key is fine but today's quota is spent (403 quotaExceeded)
+//   invalid — anything else the API rejects (bad key, API not enabled, …); the API's
+//             own message is passed through so the user can act on it
+//   network — the request never reached Google
+const WITNESS_CHANNEL_ID = "UC_x5XG1OV2P6uZZ5FSM9Ttw"; // Google Developers — stable
+const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"]);
+
+async function testApiKey(key) {
+  const apiKey = (key || "").trim();
+  if (!apiKey) return { state: "unset" };
+
+  const params = new URLSearchParams({
+    part: "id",
+    id: WITNESS_CHANNEL_ID,
+    key: apiKey,
+  });
+
+  let response;
+  let data;
+  try {
+    console.log(`${LOG} testing API key (witness channels.list call)`);
+    response = await fetch(`${API_BASE}?${params.toString()}`);
+    data = await response.json();
+  } catch (err) {
+    return { state: "network", message: err.message };
+  }
+
+  if (response.ok) return { state: "valid" };
+
+  const error = data && data.error;
+  const reason = error && error.errors && error.errors[0] && error.errors[0].reason;
+  if (response.status === 403 && QUOTA_REASONS.has(reason)) {
+    return { state: "quota" };
+  }
+  return {
+    state: "invalid",
+    status: response.status,
+    message: (error && error.message) || `HTTP ${response.status}`,
+  };
+}
+
 // Returning a promise from the listener sends its resolved value back to the sender.
 browser.runtime.onMessage.addListener((message) => {
   if (!message) return;
@@ -208,5 +254,8 @@ browser.runtime.onMessage.addListener((message) => {
   }
   if (message.type === "lookupChannel") {
     return lookupChannel(message.channel);
+  }
+  if (message.type === "testApiKey") {
+    return testApiKey(message.key);
   }
 });
