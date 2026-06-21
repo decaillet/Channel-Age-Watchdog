@@ -36,10 +36,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Demo:** save a key in Options, reload Firefox → key persists.
 
 ## M5 — Real API call + heuristic + real badge
-- [ ] `background.js` calls YouTube Data API v3 `channels.list`
-- [ ] Compute ratio + "new channel + high volume" rule
-- [ ] Badge shows real numbers, only when flagged
-- **Demo:** slop channel → flagged with numbers; normal channel → no badge.
+- [x] `background.js` calls YouTube Data API v3 `channels.list`
+- [x] Compute ratio + "new channel + high volume" rule
+- [x] Badge always shows real numbers: ⚠️ flagged · ✅ legit · ❔ no verdict
+- **Demo:** slop channel → red ⚠️ with numbers; normal channel → green ✅; no key /
+  unsupported channel → grey ❔ with reason.
 
 ## M6 — Caching + graceful no-op
 - [ ] Cache channel lookups in `browser.storage.local` (reuse ≥7 days)
